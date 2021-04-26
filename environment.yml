@@ -1,0 +1,13 @@
+name: healthcare-aiops
+dependencies:
+  - python>=3.8
+  - pandas
+  - numpy=1.18.5
+  - scikit-learn
+  - matplotlib
+  - seaborn
+  - tqdm
+  - tensorflow
+  - pip
+  - pip:
+    - dc-cli
