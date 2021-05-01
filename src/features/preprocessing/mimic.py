@@ -3,6 +3,7 @@ import dataclasses
 import logging
 import pandas as pd
 from pathlib import Path
+from tqdm import tqdm
 
 def _convert_to_icd9(dxStr: str):
     if dxStr.startswith('E'):
@@ -25,20 +26,62 @@ def _convert_to_3digit_icd9(dxStr: str):
 class PreprocessorConfig:
     admission_file: Path = Path('data/ADMISSIONS.csv')
     diagnosis_file: Path = Path('data/DIAGNOSES_ICD.csv')
+    pkl_file: Path = Path('data/mimic_processed.pkl')
+    hierarchy_file: Path = Path('data/ccs_multi_dx_tool_2015.csv')
     min_admissions_per_user: int = 2
 
+class HierarchyPreprocessor:
+    hierarchy_file: Path
 
-class Preprocessor:
+    def __init__(self,
+            hierarchy_file=Path('data/ccs_multi_dx_tool_2015.csv')):
+        self.hierarchy_file = hierarchy_file
+
+    def preprocess_hierarchy(self) -> pd.DataFrame:
+        logging.info('Starting to preprocess ICD9 hierarchy')
+        hierarchy_df = self._read_hierarchy_df()
+        return self._transform_hierarchy_df(hierarchy_df)
+
+
+    def _read_hierarchy_df(self) -> pd.DataFrame:
+        logging.info('Reading hierarchy_df from %s', self.hierarchy_file)
+        return pd.read_csv(self.hierarchy_file, quotechar='\'', dtype=str)
+
+    def _transform_hierarchy_df(self, hierarchy_df: pd.DataFrame):
+        transformed_hierarchy_df = pd.DataFrame(columns=['parent', 'child'])
+        for _, row in tqdm(hierarchy_df.iterrows(), desc='Building flat hierarchy df', total=len(transformed_hierarchy_df)):
+            all_parents = [
+                    row['CCS LVL 1'],
+                    row['CCS LVL 2'],
+                    row['CCS LVL 3'],
+                    row['CCS LVL 4'],
+            ]
+            all_parents = [str(label).strip() for label in all_parents]
+            all_parents = [label for label in all_parents if len(label) > 0]
+            # Labels are sorted from general -> specific
+
+            transformed_hierarchy_df = transformed_hierarchy_df.append(pd.DataFrame(data={
+                'parent': all_parents,
+                'child': all_parents[1:] + [_convert_to_3digit_icd9(row['ICD-9-CM CODE'])]
+            }))
+        
+        return transformed_hierarchy_df
+
+
+class MimicPreprocessor:
     admission_file: Path
     diagnosis_file: Path 
+    pkl_file: Path
     min_admissions_per_user: int
 
     def __init__(self, 
             admission_file=Path('data/ADMISSIONS.csv'), 
             diagnosis_file=Path('data/DIAGNOSES_ICD.csv'), 
+            pkl_file=Path('data/mimic_processed.pkl'),
             min_admissions_per_user=2):
         self.admission_file = admission_file
         self.diagnosis_file = diagnosis_file
+        self.pkl_file = pkl_file
         self.min_admissions_per_user = min_admissions_per_user
 
     def preprocess_mimic(self) -> pd.DataFrame:

@@ -1,2 +1,2 @@
 """Code to preprocess datasets."""
-from .mimic import Preprocessor, PreprocessorConfig
+from .mimic import MimicPreprocessor, PreprocessorConfig, HierarchyPreprocessor

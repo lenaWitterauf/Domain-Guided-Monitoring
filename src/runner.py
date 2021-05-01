@@ -1,5 +1,5 @@
 from src import features, models
-from src.features import preprocessing, sequences
+from src.features import preprocessing, sequences, knowledge
 import pandas as pd
 import logging
 import dataclass_cli
@@ -23,18 +23,24 @@ class ExperimentRunner:
         )
         split = handler.transform_train_test_split(sequence_df, self.sequence_column_name)
 
-        model = models.SimpleLSTMModel()
-        model.build(split.max_length, len(split.vocab))
+        model = self.load_model(split)
         model.train(split)
 
-    def load_model(self):
+    def load_model(self, split: sequences.TrainTestSplit):
         if self.model_type == 'simple':
-            return models.SimpleLSTMModel()
+            model = models.SimpleLSTMModel()
+            model.build(split.max_length, len(split.vocab))
+            return model
 
         elif self.model_type == 'gram':
-            # TODO: initialize GRAM hierarchy
-            logging.fatal('GRAM cannot be used yet - hierarchy parsing not implemented!')
-            return models.GramModel()
+            hierarchy_preprocessor = preprocessing.HierarchyPreprocessor()
+            hierarchy_df = hierarchy_preprocessor.preprocess_hierarchy()
+            hierarchy = knowledge.HierarchyKnowledge()
+            hierarchy.build_hierarchy_from_df(hierarchy_df, split.vocab)
+
+            model = models.GramModel()
+            model.build(hierarchy, split.max_length, len(split.vocab))
+            return model
         
         else: 
             logging.fatal('Unknown model type %s', self.model_type)
@@ -45,8 +51,8 @@ class ExperimentRunner:
             logging.fatal('Unknown sequence type %s, please use MIMIC only for now!', self.sequence_type)
             return
         
-        preprocessor_config = preprocessor.mimic.PreprocessorConfig()
-        preprocessor = preprocessing.mimic.Preprocessor(
+        preprocessor_config = preprocessing.PreprocessorConfig()
+        preprocessor = preprocessing.MimicPreprocessor(
             admission_file=preprocessor_config.admission_file,
             diagnosis_file=preprocessor_config.diagnosis_file,
             min_admissions_per_user=preprocessor_config.min_admissions_per_user,

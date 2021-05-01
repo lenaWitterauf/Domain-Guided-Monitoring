@@ -1,6 +1,8 @@
 import tensorflow as tf
 import pandas as pd
 from typing import Dict
+import logging
+from tqdm import tqdm
 from ..features.knowledge import HierarchyKnowledge
 from ..features.sequences import TrainTestSplit
 
@@ -23,8 +25,9 @@ class GramEmbedding(tf.keras.Model):
         self._init_ancestor_variables(hierarchy)
 
     def _init_embedding_variables(self, hierarchy: HierarchyKnowledge, embedding_size: int):
+        logging.info('Initializing GRAM embedding variables')
         self.embeddings = {}
-        for name, idx in hierarchy.extended_vocab.items():
+        for name, idx in tqdm(hierarchy.extended_vocab.items(), desc='Initializing GRAM embedding variables'):
             self.embeddings[idx] = tf.Variable(
                 initial_value=tf.random.normal(shape=(1,embedding_size)),
                 trainable=True,
@@ -42,8 +45,9 @@ class GramEmbedding(tf.keras.Model):
         )
 
     def _init_ancestor_variables(self, hierarchy: HierarchyKnowledge): 
+        logging.info('Initializing GRAM ancestor embedding variables')
         self.ancestor_embeddings = {}
-        for idx, node in hierarchy.nodes.items():
+        for idx, node in tqdm(hierarchy.nodes.items(), desc='Initializing GRAM ancestor embedding variables'):
             if not node.is_leaf(): continue
             ancestor_idxs = set(node.get_ancestor_label_idxs() + [idx])
             id_ancestor_embeddings = [
