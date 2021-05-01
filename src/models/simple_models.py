@@ -18,7 +18,7 @@ class SimpleLSTMModel:
     def build(self, max_length: int, vocab_size: int):
         input_layer = tf.keras.layers.Input(shape=(max_length, vocab_size))
         embedding_layer = tf.keras.layers.Dense(self.embedding_dim)
-        self.lstm_model = tf.keras.models.Sequential([
+        self.prediction_model = tf.keras.models.Sequential([
             input_layer,
             embedding_layer,
             tf.keras.layers.LSTM(self.lstm_dim),
@@ -30,13 +30,13 @@ class SimpleLSTMModel:
         ])
 
     def train(self, data: TrainTestSplit):
-        self.lstm_model.compile(
+        self.prediction_model.compile(
             loss=tf.keras.losses.BinaryCrossentropy(), 
             optimizer=tf.optimizers.Adam(), 
             metrics=['CategoricalAccuracy'])
 
         
-        self.lstm_model.fit(
+        self.prediction_model.fit(
             x=data.train_x, 
             y=data.train_y, 
             validation_data=(data.test_x, data.test_y),

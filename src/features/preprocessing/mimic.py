@@ -22,22 +22,37 @@ def _convert_to_3digit_icd9(dxStr: str):
 
 @dataclass_cli.add
 @dataclasses.dataclass
-class Preprocessor:
+class PreprocessorConfig:
     admission_file: Path = Path('data/ADMISSIONS.csv')
     diagnosis_file: Path = Path('data/DIAGNOSES_ICD.csv')
-    pkl_file: Path = Path('data/mimic_sequences.pkl')
     min_admissions_per_user: int = 2
+
+
+class Preprocessor:
+    admission_file: Path
+    diagnosis_file: Path 
+    min_admissions_per_user: int
+
+    def __init__(self, 
+            admission_file=Path('data/ADMISSIONS.csv'), 
+            diagnosis_file=Path('data/DIAGNOSES_ICD.csv'), 
+            min_admissions_per_user=2):
+        self.admission_file = admission_file
+        self.diagnosis_file = diagnosis_file
+        self.min_admissions_per_user = min_admissions_per_user
 
     def preprocess_mimic(self) -> pd.DataFrame:
         logging.info('Starting to preprocess MIMIC dataset')
         admission_df = self._read_admission_df()
         diagnosis_df = self._read_diagnosis_df()
         aggregated_df = self._aggregate_codes_per_admission(diagnosis_df=diagnosis_df, admission_df=admission_df)
-        self._write_to_pkl(aggregated_df)
-        return aggregated_df
+        return aggregated_df[aggregated_df['num_admissions'] >= self.min_admissions_per_user]
 
     def load_mimic_from_pkl(self) -> pd.DataFrame:
         return pd.read_pickle(self.pkl_file)
+
+    def write_mimic_to_pkl(self, aggregated_df: pd.DataFrame):
+        self._write_to_pkl(aggregated_df)
 
     def _read_admission_df(self) -> pd.DataFrame:
         logging.info('Reading admission_df from %s', self.admission_file)
@@ -52,6 +67,7 @@ class Preprocessor:
     def _read_diagnosis_df(self) -> pd.DataFrame:
         logging.info('Reading diagnosis_df from %s', self.diagnosis_file)
         diagnosis_df = pd.read_csv(self.diagnosis_file)
+        diagnosis_df['icd9_code'] = diagnosis_df['icd9_code'].apply(str)
         diagnosis_df['icd9_code_converted'] = diagnosis_df['icd9_code'].apply(_convert_to_icd9)
         diagnosis_df['icd9_code_converted_3digits'] = diagnosis_df['icd9_code'].apply(_convert_to_3digit_icd9)
         return diagnosis_df
@@ -70,7 +86,7 @@ class Preprocessor:
             'icd9_code': lambda x: list(x),
             'icd9_code_converted': lambda x: list(x),
             'icd9_code_converted_3digits': lambda x: list(x),
-        })
+        }).reset_index()
         admissions_per_subject['num_admissions'] = admissions_per_subject['hadm_id'].apply(len)
         return admissions_per_subject
 

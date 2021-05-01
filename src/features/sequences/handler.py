@@ -34,14 +34,24 @@ class TrainTestSplit:
 
 @dataclass_cli.add
 @dataclasses.dataclass
-class SequenceHandler:
+class SequenceHandlerConfig:
     test_percentage: float = 0.1
     random_state: int = 12345
     flatten: bool = True
 
+class SequenceHandler:
+    test_percentage: float
+    random_state: int
+    flatten: bool
+
+    def __init__(self, test_percentage=0.1, random_state=12345, flatten=True):
+        self.test_percentage = test_percentage
+        self.random_state = random_state
+        self.flatten = flatten
+
     def transform_train_test_split(self, sequence_df: pd.DataFrame, sequence_column_name: str):
         vocab = self._generate_vocab(sequence_df, sequence_column_name)
-        max_sequence_length = sequence_df[sequence_column_name].apply(len).max()
+        max_sequence_length = sequence_df[sequence_column_name].apply(len).max() - 1
         max_symptoms_per_sequence = sequence_df[sequence_column_name].apply(lambda x: sum([len(y) for y in x])).max()
 
         train_sequences, test_sequences = train_test_split(
@@ -101,7 +111,7 @@ class SequenceHandler:
         symptom_vec = np.zeros(len(vocab))
         for symptom in symptoms:
             symptom_vec[vocab[symptom]] = 1
-        return tf.convert_to_tensor(symptom_vec)
+        return tf.convert_to_tensor(symptom_vec, dtype='float32')
 
     def _translate_and_pad_x_flat(self, 
             splitted: SplittedSequence, 
