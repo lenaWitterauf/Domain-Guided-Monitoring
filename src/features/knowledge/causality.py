@@ -4,7 +4,7 @@ from tqdm import tqdm
 import logging
 from .node import Node
 
-class HierarchyKnowledge:
+class CausalityKnowledge:
     nodes: Dict[int, Node]
     vocab: Dict[str, int]
     extended_vocab: Dict[str, int]
@@ -15,13 +15,18 @@ class HierarchyKnowledge:
         self.child_col_name = child_col_name
         self.parent_col_name = parent_col_name
 
-    def build_hierarchy_from_df(self, hierarchy_df: pd.DataFrame, vocab: Dict[str, int]):
+    def build_causality_from_df(self, hierarchy_df: pd.DataFrame, vocab: Dict[str, int]):
         self.vocab = vocab
         self._build_extended_vocab(hierarchy_df, vocab)
-        for _,row in tqdm(hierarchy_df.iterrows(), desc='Building Hierarchy from df'):
+        for _,row in tqdm(hierarchy_df.iterrows(), desc='Building Causality from df'):
             child_name = row[self.child_col_name]
             if child_name not in self.extended_vocab:
                 logging.debug('Ignoring node %s as not in dataset', child_name)
+                continue
+
+            parent_name = row[self.parent_col_name]
+            if parent_name not in self.extended_vocab:
+                logging.debug('Ignoring node %s as not in dataset', parent_name)
                 continue
 
             child_node = self.nodes[self.extended_vocab[row[self.child_col_name]]]
@@ -30,7 +35,7 @@ class HierarchyKnowledge:
             child_node.in_nodes.add(parent_node)
             parent_node.out_nodes.add(child_node)
         
-        logging.info('Built hierarchy with %d nodes', len(self.nodes))
+        logging.info('Built causality with %d nodes', len(self.nodes))
 
     def _build_extended_vocab(self, hierarchy_df: pd.DataFrame, vocab: Dict[str, int]):
         self.extended_vocab = {}
@@ -38,13 +43,20 @@ class HierarchyKnowledge:
 
         labels_to_handle = list(vocab.keys())
         max_index = max(vocab.values())
-        while len(labels_to_handle) > 0:
-            label = labels_to_handle.pop()
+        for label in labels_to_handle:
             if label in self.extended_vocab:
                 continue
 
             if label in vocab:
                 self.extended_vocab[label] = vocab[label]
+
+                parents_df = hierarchy_df[hierarchy_df[self.child_col_name] == label]
+                parents = list(set(parents_df[self.parent_col_name]))
+                labels_to_handle = labels_to_handle + parents
+                
+                child_df = hierarchy_df[hierarchy_df[self.parent_col_name] == label]
+                children = list(set(child_df[self.child_col_name]))
+                labels_to_handle = labels_to_handle + children
             else:
                 self.extended_vocab[label] = max_index + 1
                 max_index = max_index + 1
@@ -52,7 +64,3 @@ class HierarchyKnowledge:
             self.nodes[self.extended_vocab[label]] = Node(
                 label_idx=self.extended_vocab[label], 
                 label_str=label)
-
-            parents_df = hierarchy_df[hierarchy_df[self.child_col_name] == label]
-            parents = list(set(parents_df[self.parent_col_name]))
-            labels_to_handle = labels_to_handle + parents

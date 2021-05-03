@@ -10,8 +10,8 @@ class GramEmbedding(tf.keras.Model):
     embedding_size: int
     embeddings: Dict[int, tf.Variable]
     ancestor_embeddings: Dict[int, tf.Tensor]
-    concatenated_embeddings: tf.Tensor # shape: (num_leaf_nodes, embedding_size)
-    concatenated_ancestor_embeddings: tf.Tensor # shape: (num_leaf_nodes, num_nodes, embedding_size)
+    concatenated_embeddings: tf.Variable # shape: (num_leaf_nodes, embedding_size)
+    concatenated_ancestor_embeddings: tf.Variable # shape: (num_leaf_nodes, num_nodes, embedding_size)
 
     def __init__(self, 
             hierarchy: HierarchyKnowledge, 
@@ -37,7 +37,7 @@ class GramEmbedding(tf.keras.Model):
         self.concatenated_embeddings = tf.Variable(
             tf.expand_dims(
                 tf.concat(
-                    [self.embeddings[node.label_idx] for node in hierarchy.nodes.values() if node.is_leaf()], 
+                    [self.embeddings[idx] for idx in range(len(hierarchy.vocab))], 
                     axis=0),
                 1),
             trainable=True,
@@ -58,7 +58,7 @@ class GramEmbedding(tf.keras.Model):
             self.ancestor_embeddings[idx] = tf.concat(id_ancestor_embeddings, axis=0)
 
         all_ancestor_embeddings = [
-            self.ancestor_embeddings[node.label_idx] for node in hierarchy.nodes.values() if node.is_leaf()
+            self.ancestor_embeddings[idx] for idx in range(len(hierarchy.vocab))
         ]
         self.concatenated_ancestor_embeddings = tf.Variable(
             tf.concat([all_ancestor_embeddings], axis=1),
