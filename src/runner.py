@@ -9,8 +9,8 @@ import dataclasses
 @dataclasses.dataclass
 class ExperimentRunner:
     sequence_type: str = 'mimic'
-    model_type: str = 'simple'
-    sequence_column_name: str = 'icd9_code_converted_3digits'
+    model_type: str = 'text'
+    sequence_column_name: str = 'icd9_code_converted' #'icd9_code_converted_3digits'
     need_sequence_preprocessing: bool = True
 
     def run(self):
@@ -42,6 +42,16 @@ class ExperimentRunner:
             model.build(hierarchy, split.max_length, len(split.vocab))
             return model
         
+        elif self.model_type == 'text':
+            description_preprocessor = preprocessing.ICDDescriptionPreprocessor()
+            description_df = description_preprocessor.load_descriptions()
+            description_knowledge = knowledge.DescriptionKnowledge()
+            description_knowledge.build_knowledge_from_df(description_df, split.vocab)
+
+            model = models.TextualModel()
+            model.build(description_knowledge, split.max_length, len(split.vocab))
+            return model
+
         else: 
             logging.fatal('Unknown model type %s', self.model_type)
             return

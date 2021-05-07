@@ -67,6 +67,18 @@ class HierarchyPreprocessor:
         
         return transformed_hierarchy_df
 
+class ICDDescriptionPreprocessor:
+    description_file: Path
+
+    def __init__(self, description_file=Path('data/D_ICD_DIAGNOSES.csv')):
+        self.description_file = description_file
+
+    def load_descriptions(self):
+        description_df = pd.read_csv(self.description_file)
+        description_df['label'] = description_df['icd9_code'].apply(_convert_to_icd9)
+        description_df['description'] = description_df['long_title'].apply(lambda x: x.replace('\"', ''))
+        return description_df[['label', 'description']]
+
 
 class MimicPreprocessor:
     admission_file: Path

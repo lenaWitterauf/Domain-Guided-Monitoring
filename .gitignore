@@ -292,5 +292,11 @@ tags
 [._]*.un~
 
 # End of https://www.toptal.com/developers/gitignore/api/vim,code,python,pycharm,jupyternotebooks
+
+# Data directory
 data/**
 !data/.gitkeep
+
+# Fasttext models
+*.bin
+*.gz
