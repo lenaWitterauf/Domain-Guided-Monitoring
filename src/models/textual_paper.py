@@ -21,7 +21,7 @@ class DescriptionPaperEmbedding(tf.keras.Model):
     def __init__(self, 
             descriptions: DescriptionKnowledge, 
             embedding_size: int = 16):
-        super(DescriptionEmbedding, self).__init__()
+        super(DescriptionPaperEmbedding, self).__init__()
         self.embedding_size = embedding_size
         self.out_layer = tf.keras.layers.Dense(embedding_size)
         self._init_embedding_variables(descriptions)
@@ -50,9 +50,7 @@ class DescriptionPaperEmbedding(tf.keras.Model):
                     if i >= len(description_words)
                 ], axis=0
             )
-            
-        print(self.embeddings.keys())
-        
+                    
         self.concatenated_embeddings = tf.stack(
             [
                 self.embeddings[i] 
@@ -85,4 +83,4 @@ class DescriptionPaperEmbedding(tf.keras.Model):
 
 class DescriptionPaperModel(BaseModel):
     def _get_embedding_layer(self, split: TrainTestSplit, knowledge: DescriptionKnowledge) -> tf.keras.Model:
-        return DescriptionEmbedding(knowledge)
+        return DescriptionPaperEmbedding(knowledge)

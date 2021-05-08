@@ -86,4 +86,4 @@ class GramEmbedding(tf.keras.Model):
 
 class GramModel(BaseModel):
     def _get_embedding_layer(self, split: TrainTestSplit, knowledge: HierarchyKnowledge()) -> tf.keras.Model:
-        return CausalityEmbedding(knowledge)
+        return GramEmbedding(knowledge)

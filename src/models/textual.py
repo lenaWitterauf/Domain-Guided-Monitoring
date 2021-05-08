@@ -3,6 +3,7 @@ import pandas as pd
 from typing import Dict
 import logging
 from tqdm import tqdm
+import fasttext.util
 from ..features.knowledge import DescriptionKnowledge
 from ..features.sequences import TrainTestSplit
 from .base import BaseModel
@@ -40,7 +41,7 @@ class DescriptionEmbedding(tf.keras.Model):
             self.embeddings[idx] = tf.Variable(
                 initial_value=tf.constant(
                     word_model.get_word_vector(name), 
-                    shape=(1,model.get_dimension())),
+                    shape=(1,word_model.get_dimension())),
                 trainable=False,
                 name=name,
             )

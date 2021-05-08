@@ -36,26 +36,26 @@ class ExperimentRunner:
             model.build(split, split.vocab)
             return model
 
-        elif self.model_type == 'gram':
-            hierarchy = self.load_hierarchy_knowledge()
+        elif self.model_type == 'gram' or self.model_type == 'hierarchy':
+            hierarchy = self.load_hierarchy_knowledge(split)
             model = models.GramModel()
             model.build(split, hierarchy)
             return model
                 
         elif self.model_type == 'text':
-            description_knowledge = self.load_description_knowledge()
+            description_knowledge = self.load_description_knowledge(split)
             model = models.DescriptionModel()
             model.build(split, description_knowledge)
             return model
 
         elif self.model_type == 'text_paper':
-            description_knowledge = self.load_description_knowledge()
+            description_knowledge = self.load_description_knowledge(split)
             model = models.DescriptionPaperModel()
             model.build(split, description_knowledge)
             return model
 
         elif self.model_type == 'causal':
-            causality_knowledge = self.load_causal_knowledge()
+            causality_knowledge = self.load_causal_knowledge(split)
             model = models.CausalityModel()
             model.build(split, causality_knowledge)
             return model
@@ -64,10 +64,17 @@ class ExperimentRunner:
             logging.fatal('Unknown model type %s', self.model_type)
             return
 
-    def load_description_knowledge(self) -> knowledge.DescriptionKnowledge:
+    def load_description_knowledge(self, split: sequences.TrainTestSplit) -> knowledge.DescriptionKnowledge:
         if self.sequence_type == 'mimic':
             description_preprocessor = preprocessing.ICDDescriptionPreprocessor()
             description_df = description_preprocessor.load_descriptions()
+            description_knowledge = knowledge.DescriptionKnowledge()
+            description_knowledge.build_knowledge_from_df(description_df, split.vocab)
+            return description_knowledge
+        elif self.sequence_type == 'huawei_logs':
+            description_preprocessor = preprocessing.ConcurrentAggregatedLogsDescriptionPreprocessor()
+            description_df = description_preprocessor.load_descriptions()
+            print(description_df)
             description_knowledge = knowledge.DescriptionKnowledge()
             description_knowledge.build_knowledge_from_df(description_df, split.vocab)
             return description_knowledge
@@ -75,16 +82,23 @@ class ExperimentRunner:
             logging.fatal('Description knowledge not available for data type %s', self.sequence_type)
             return 
 
-    def load_causal_knowledge(self) -> knowledge.CausalityKnowledge:
+    def load_causal_knowledge(self, split: sequences.TrainTestSplit) -> knowledge.CausalityKnowledge:
         logging.fatal('Causal knowledge not available for data type %s', self.sequence_type)
         return 
 
-    def load_hierarchy_knowledge(self) -> knowledge.HierarchyKnowledge:
+    def load_hierarchy_knowledge(self, split: sequences.TrainTestSplit) -> knowledge.HierarchyKnowledge:
         if self.sequence_type == 'mimic':
             hierarchy_preprocessor = preprocessing.HierarchyPreprocessor()
             hierarchy_df = hierarchy_preprocessor.preprocess_hierarchy()
             hierarchy = knowledge.HierarchyKnowledge()
             hierarchy.build_hierarchy_from_df(hierarchy_df, split.vocab)
+            return hierarchy
+        elif self.sequence_type == 'huawei_logs':
+            hierarchy_preprocessor = preprocessing.ConcurrentAggregatedLogsHierarchyPreprocessor()
+            hierarchy_df = hierarchy_preprocessor.preprocess_hierarchy()
+            hierarchy = knowledge.HierarchyKnowledge()
+            hierarchy.build_hierarchy_from_df(hierarchy_df, split.vocab)
+            return hierarchy
         else:
             logging.fatal('Hierarchy knowledge not available for data type %s', self.sequence_type)
             return 
