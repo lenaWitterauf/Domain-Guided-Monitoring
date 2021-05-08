@@ -5,6 +5,7 @@ import logging
 from tqdm import tqdm
 from ..features.knowledge import HierarchyKnowledge
 from ..features.sequences import TrainTestSplit
+from .base import BaseModel
 
 class GramEmbedding(tf.keras.Model):
     embedding_size: int
@@ -82,34 +83,6 @@ class GramEmbedding(tf.keras.Model):
         return tf.linalg.matmul(values, context_vector) # shape: (dataset_size, max_sequence_length, embedding_size)
 
 
-class GramModel():
-    lstm_dim: int = 32
-    n_epochs: int = 100
-    prediction_model: tf.keras.Model = None
-    embedding_model: tf.keras.Model = None
-
-    def build(self, hierarchy: HierarchyKnowledge, max_length: int, vocab_size: int):
-        input_layer = tf.keras.layers.Input(shape=(max_length, vocab_size))
-        embedding_layer = GramEmbedding(hierarchy)
-        self.prediction_model = tf.keras.models.Sequential([
-            input_layer,
-            embedding_layer,
-            tf.keras.layers.LSTM(self.lstm_dim),
-            tf.keras.layers.Dense(vocab_size, activation='relu'),
-        ])
-        self.embedding_model = tf.keras.models.Sequential([
-            input_layer,
-            embedding_layer,
-        ])
-        
-    def train(self, data: TrainTestSplit):
-        self.prediction_model.compile(
-            loss=tf.keras.losses.BinaryCrossentropy(), 
-            optimizer=tf.optimizers.Adam(), 
-            metrics=['CategoricalAccuracy'])
-
-        self.prediction_model.fit(
-            x=data.train_x, 
-            y=data.train_y, 
-            validation_data=(data.test_x, data.test_y),
-            epochs=self.n_epochs)
+class GramModel(BaseModel):
+    def _get_embedding_layer(self, split: TrainTestSplit, knowledge: HierarchyKnowledge()) -> tf.keras.Model:
+        return CausalityEmbedding(knowledge)
