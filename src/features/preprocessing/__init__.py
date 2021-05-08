@@ -1,2 +1,3 @@
 """Code to preprocess datasets."""
-from .mimic import MimicPreprocessor, PreprocessorConfig, HierarchyPreprocessor, ICDDescriptionPreprocessor
+from .mimic import MimicPreprocessor, MimicPreprocessorConfig, HierarchyPreprocessor, ICDDescriptionPreprocessor
+from .huawei import ConcurrentAggregatedLogsPreprocessor, HuaweiPreprocessorConfig

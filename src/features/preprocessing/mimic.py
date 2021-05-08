@@ -23,7 +23,7 @@ def _convert_to_3digit_icd9(dxStr: str):
 
 @dataclass_cli.add
 @dataclasses.dataclass
-class PreprocessorConfig:
+class MimicPreprocessorConfig:
     admission_file: Path = Path('data/ADMISSIONS.csv')
     diagnosis_file: Path = Path('data/DIAGNOSES_ICD.csv')
     pkl_file: Path = Path('data/mimic_processed.pkl')
