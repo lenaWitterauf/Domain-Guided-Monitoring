@@ -19,18 +19,19 @@ class CausalityEmbedding(tf.keras.Model):
             embedding_size: int = 16, 
             hidden_size: int = 16):
         super(CausalityEmbedding, self).__init__()
+        self.embedding_size = embedding_size
         self.w1 = tf.keras.layers.Dense(hidden_size)
         self.w2 = tf.keras.layers.Dense(hidden_size)
         self.u = tf.keras.layers.Dense(1)
-        self._init_embedding_variables(causality, embedding_size)
+        self._init_embedding_variables(causality)
         self._init_neighbour_variables(causality)
 
-    def _init_embedding_variables(self, causality: CausalityKnowledge, embedding_size: int):
+    def _init_embedding_variables(self, causality: CausalityKnowledge):
         logging.info('Initializing Causality embedding variables')
         self.embeddings = {}
         for name, idx in tqdm(causality.extended_vocab.items(), desc='Initializing Causality embedding variables'):
             self.embeddings[idx] = tf.Variable(
-                initial_value=tf.random.normal(shape=(1,embedding_size)),
+                initial_value=tf.random.normal(shape=(1,self.embedding_size)),
                 trainable=True,
                 name=name,
             )
@@ -49,7 +50,7 @@ class CausalityEmbedding(tf.keras.Model):
         logging.info('Initializing Causality neighbour embedding variables')
         self.neighbour_embeddings = {}
         for idx, node in tqdm(causality.nodes.items(), desc='Initializing Causality neighbour embedding variables'):
-            if not node.is_leaf(): continue
+            if node.label_str not in causality.vocab: continue # we only need embeddings for nodes that are in the dataset
             neighbour_idxs = set(node.get_neighbour_label_idxs() + [idx])
             id_neighbour_embeddings = [
                 self.embeddings[x]  if (x in neighbour_idxs) 

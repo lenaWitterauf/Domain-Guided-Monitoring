@@ -19,18 +19,19 @@ class GramEmbedding(tf.keras.Model):
             embedding_size: int = 16, 
             hidden_size: int = 16):
         super(GramEmbedding, self).__init__()
+        self.embedding_size = embedding_size
         self.w1 = tf.keras.layers.Dense(hidden_size)
         self.w2 = tf.keras.layers.Dense(hidden_size)
         self.u = tf.keras.layers.Dense(1)
-        self._init_embedding_variables(hierarchy, embedding_size)
+        self._init_embedding_variables(hierarchy)
         self._init_ancestor_variables(hierarchy)
 
-    def _init_embedding_variables(self, hierarchy: HierarchyKnowledge, embedding_size: int):
+    def _init_embedding_variables(self, hierarchy: HierarchyKnowledge):
         logging.info('Initializing GRAM embedding variables')
         self.embeddings = {}
         for name, idx in tqdm(hierarchy.extended_vocab.items(), desc='Initializing GRAM embedding variables'):
             self.embeddings[idx] = tf.Variable(
-                initial_value=tf.random.normal(shape=(1,embedding_size)),
+                initial_value=tf.random.normal(shape=(1,self.embedding_size)),
                 trainable=True,
                 name=name,
             )

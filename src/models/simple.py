@@ -15,14 +15,15 @@ class SimpleEmbedding(tf.keras.Model):
             vocab: Dict[str, int],
             embedding_size: int = 16):
         super(SimpleEmbedding, self).__init__()
-        self._init_embedding_variables(vocab, embedding_size)
+        self.embedding_size = embedding_size
+        self._init_embedding_variables(vocab)
 
-    def _init_embedding_variables(self, vocab: Dict[str, int], embedding_size: int):
+    def _init_embedding_variables(self, vocab: Dict[str, int]):
         logging.info('Initializing Simple embedding variables')
         self.embeddings = {}
         for name, idx in tqdm(vocab.items(), desc='Initializing Simple embedding variables'):
             self.embeddings[idx] = tf.Variable(
-                initial_value=tf.random.normal(shape=(1,embedding_size)),
+                initial_value=tf.random.normal(shape=(1,self.embedding_size)),
                 trainable=True,
                 name=name,
             )

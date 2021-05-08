@@ -41,10 +41,16 @@ class ExperimentRunner:
             model = models.GramModel()
             model.build(split, hierarchy)
             return model
-        
+                
         elif self.model_type == 'text':
             description_knowledge = self.load_description_knowledge()
-            model = models.TextualModel()
+            model = models.DescriptionModel()
+            model.build(split, description_knowledge)
+            return model
+
+        elif self.model_type == 'text_paper':
+            description_knowledge = self.load_description_knowledge()
+            model = models.DescriptionPaperModel()
             model.build(split, description_knowledge)
             return model
 
