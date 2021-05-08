@@ -3,12 +3,12 @@ import pandas as pd
 from pathlib import Path
 from typing import List
 
-from src.features.preprocessing.mimic import Preprocessor
+from src.features.preprocessing.mimic import MimicPreprocessor
 from ...test_utils import transform_to_string
 
 class TestMimic(unittest.TestCase):
     def test_mimic_preprocessing(self):
-        fixture = Preprocessor(
+        fixture = MimicPreprocessor(
             admission_file=Path('tests/resources/test_mimic_admissions.csv'),
             diagnosis_file=Path('tests/resources/test_mimic_diagnoses.csv')
         )

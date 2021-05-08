@@ -1,7 +1,7 @@
 import tensorflow as tf
 from typing import Any
 from ..features.sequences import TrainTestSplit
-from .metrics import MulticlassAccuracy, MulticlassFalseNegativeRate, MulticlassFalsePositiveRate, MulticlassTrueNegativeRate, MulticlassTruePositiveRate
+from .metrics import MulticlassAccuracy, MulticlassTrueNegativeRate, MulticlassTruePositiveRate
 
 class BaseModel():
     lstm_dim: int = 32
@@ -33,9 +33,7 @@ class BaseModel():
             metrics=[
                 MulticlassAccuracy(),
                 MulticlassTrueNegativeRate(),
-                MulticlassFalseNegativeRate(),
                 MulticlassTruePositiveRate(),
-                MulticlassFalsePositiveRate(),
             ])
 
         self.prediction_model.fit(

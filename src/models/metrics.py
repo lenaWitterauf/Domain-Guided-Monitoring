@@ -43,25 +43,11 @@ class MulticlassTruePositiveRate(MulticlassMetric):
         super().__init__(name='MulticlassTruePositiveRate', *args, **kwargs)
 
     def result(self):
-        return self.true_positive_predictions / (self.true_positive_predictions + self.false_positive_predictions)
-
-class MulticlassFalsePositiveRate(MulticlassMetric):
-    def __init__(self, *args, **kwargs):
-        super().__init__(name='MulticlassFalsePositiveRate', *args, **kwargs)
-
-    def result(self):
-        return self.false_positive_predictions / (self.true_positive_predictions + self.false_positive_predictions)
+        return self.true_positive_predictions / (self.true_positive_predictions + self.false_negative_predictions)
 
 class MulticlassTrueNegativeRate(MulticlassMetric):
     def __init__(self, *args, **kwargs):
         super().__init__(name='MulticlassTrueNegativeRate', *args, **kwargs)
 
     def result(self):
-        return self.true_negative_predictions / (self.true_negative_predictions + self.false_negative_predictions)
-
-class MulticlassFalseNegativeRate(MulticlassMetric):
-    def __init__(self, *args, **kwargs):
-        super().__init__(name='MulticlassFalseNegativeRate', *args, **kwargs)
-
-    def result(self):
-        return self.false_negative_predictions / (self.true_negative_predictions + self.false_negative_predictions)
+        return self.true_negative_predictions / (self.true_negative_predictions + self.false_positive_predictions)
