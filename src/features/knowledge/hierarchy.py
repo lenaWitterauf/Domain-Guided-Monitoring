@@ -56,3 +56,17 @@ class HierarchyKnowledge:
             parents_df = hierarchy_df[hierarchy_df[self.child_col_name] == label]
             parents = list(set(parents_df[self.parent_col_name]))
             labels_to_handle = labels_to_handle + parents
+
+    def __str__(self):
+        roots = [node for node in self.nodes.values() if node.is_root()]
+        all_strings = []
+        for root in roots:
+            all_strings = all_strings + self._to_string_recursive(root, '')
+        return '\n'.join(all_strings)
+
+    def _to_string_recursive(self, current_node, current_prefix):
+        strings = [current_prefix + current_node.label_str]
+        for node in current_node.out_nodes:
+            strings = strings + self._to_string_recursive(node, current_prefix + '-')
+
+        return strings

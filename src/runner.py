@@ -27,38 +27,42 @@ class ExperimentRunner:
         )
         split = handler.transform_train_test_split(sequence_df, self.sequence_column_name)
 
-        model = self.load_model(split)
+        (knowledge, model) = self.load_model(split)
         model.train(split)
+
+        embedding_helper = models.analysis.EmbeddingHelper(split.vocab, model.embedding_layer)
+        embedding_helper.print_final_embeddings()
+        print('Learned attention weights:', embedding_helper.load_attention_weights(knowledge))
 
     def load_model(self, split: sequences.TrainTestSplit):
         if self.model_type == 'simple':
             model = models.SimpleModel()
             model.build(split, split.vocab)
-            return model
+            return (None, model)
 
         elif self.model_type == 'gram' or self.model_type == 'hierarchy':
             hierarchy = self.load_hierarchy_knowledge(split)
             model = models.GramModel()
             model.build(split, hierarchy)
-            return model
+            return (hierarchy, model)
                 
         elif self.model_type == 'text':
             description_knowledge = self.load_description_knowledge(split)
             model = models.DescriptionModel()
             model.build(split, description_knowledge)
-            return model
+            return (description_knowledge, model)
 
         elif self.model_type == 'text_paper':
             description_knowledge = self.load_description_knowledge(split)
             model = models.DescriptionPaperModel()
             model.build(split, description_knowledge)
-            return model
+            return (description_knowledge, model)
 
         elif self.model_type == 'causal':
             causality_knowledge = self.load_causal_knowledge(split)
             model = models.CausalityModel()
             model.build(split, causality_knowledge)
-            return model
+            return (causality_knowledge, model)
 
         else: 
             logging.fatal('Unknown model type %s', self.model_type)
@@ -74,7 +78,6 @@ class ExperimentRunner:
         elif self.sequence_type == 'huawei_logs':
             description_preprocessor = preprocessing.ConcurrentAggregatedLogsDescriptionPreprocessor()
             description_df = description_preprocessor.load_descriptions()
-            print(description_df)
             description_knowledge = knowledge.DescriptionKnowledge()
             description_knowledge.build_knowledge_from_df(description_df, split.vocab)
             return description_knowledge

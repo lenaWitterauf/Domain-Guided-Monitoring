@@ -1,6 +1,6 @@
 import tensorflow as tf
 import pandas as pd
-from typing import Dict
+from typing import Dict, List
 import logging
 from tqdm import tqdm
 import fasttext.util
@@ -10,92 +10,123 @@ from .base import BaseModel
 
 class DescriptionEmbedding(tf.keras.Model):
     embedding_size: int
-    embeddings: Dict[int, tf.Variable]
-    word_embeddings: Dict[int, tf.Tensor]
-    concatenated_embeddings: tf.Variable # shape: (num_features, 1, embedding_size)
-    concatenated_text_embeddings: tf.Variable # shape: (num_features, num_words, embedding_size)
+    num_features: int
+    num_hidden_features: int
+
+    basic_feature_embeddings: tf.Variable # shape: (num_features, embedding_size)
+    basic_hidden_embeddings: tf.Variable # shape: (num_hidden_features, embedding_size)
+    
+    embedding_mask: tf.Variable # shape: (num_features, num_hidden_features, 1)
 
     def __init__(self, 
             descriptions: DescriptionKnowledge, 
             embedding_size: int = 16, 
             hidden_size: int = 16):
         super(DescriptionEmbedding, self).__init__()
-        self.w1 = tf.keras.layers.Dense(hidden_size)
-        self.w2 = tf.keras.layers.Dense(hidden_size)
-        self.u = tf.keras.layers.Dense(1)
-        self._init_embedding_variables(descriptions, embedding_size)
-        self._init_text_embedding_variables(descriptions)
+        self.embedding_size = embedding_size
+        self.num_features = len(descriptions.vocab)
+        self.num_hidden_features = len(descriptions.words)
 
-    def _init_embedding_variables(self, descriptions: DescriptionKnowledge, embedding_size: int):
-        logging.info('Initializing basic description embedding variables')
-        self.embeddings = {}
-        for name, idx in tqdm(descriptions.vocab.items(), desc='Initializing basic description embedding variables'):
-            self.embeddings[idx] = tf.Variable(
-                initial_value=tf.random.normal(shape=(1,embedding_size)),
-                trainable=True,
-                name=name,
-            )
-            
-        word_model = self._load_fasttext_model(embedding_size)
-        for name, idx in tqdm(descriptions.words_vocab.items(), desc='Initializing word embeddings from model'):
-            self.embeddings[idx] = tf.Variable(
-                initial_value=tf.constant(
-                    word_model.get_word_vector(name), 
-                    shape=(1,word_model.get_dimension())),
-                trainable=False,
-                name=name,
-            )
-        
-        self.concatenated_embeddings = tf.Variable(
-            tf.expand_dims(
-                tf.concat(
-                    [self.embeddings[idx] for idx in range(len(descriptions.vocab))], 
-                    axis=0),
-                1),
+        self.w = tf.keras.layers.Dense(hidden_size, use_bias=True)
+        self.u = tf.keras.layers.Dense(1, use_bias=False)
+
+        self._init_basic_embedding_variables(descriptions)
+        self._init_embedding_mask(descriptions)
+
+    def _init_basic_embedding_variables(self, descriptions: DescriptionKnowledge):
+        logging.info('Initializing DESCRIPTION basic embedding variables')
+        self.basic_feature_embeddings = self.add_weight(
+            initializer=tf.keras.initializers.GlorotNormal(),
             trainable=True,
-            name='concatenated_embeddings',
+            name='description_embeddings/basic_feature_embeddings',
+            shape=(self.num_features,self.embedding_size),
         )
 
-    def _load_fasttext_model(self, embedding_size: int):
+        word_model = self._load_fasttext_model()
+        word_embeddings = {}
+        for name, idx in tqdm(descriptions.words_vocab.items(), desc='Initializing word embeddings from model'):
+            word_tensor = tf.expand_dims(
+                tf.convert_to_tensor(word_model.get_word_vector(name)),
+                axis=0,
+            )
+            word_embeddings[idx] = tf.Variable(
+                initial_value=word_tensor,
+                trainable=False,
+                shape=(1,self.embedding_size),
+            )
+
+        concatenated_word_embeddings = tf.concat(
+            [word_embeddings[x] for x in range(self.num_features, self.num_features+self.num_hidden_features)],
+            axis=1,
+        )
+        self.basic_hidden_embeddings = self.add_weight(
+            initializer=tf.keras.initializers.Constant(value=concatenated_word_embeddings),
+            trainable=False,
+            name='description_embeddings/basic_hidden_embeddings',
+            shape=(self.num_hidden_features,self.embedding_size),
+        )
+
+    def _load_fasttext_model(self):
         logging.info('(Down)loading fasttext English language model')
         fasttext.util.download_model('en', if_exists='ignore')
         model = fasttext.load_model('cc.en.300.bin')
-        if model.get_dimension() > embedding_size:
-            logging.info('Reducing dimension of FastText word model from %d to %d', model.get_dimension(), embedding_size)
-            fasttext.util.reduce_model(model, embedding_size)
+        if model.get_dimension() > self.embedding_size:
+            logging.info('Reducing dimension of FastText word model from %d to %d', model.get_dimension(), self.embedding_size)
+            fasttext.util.reduce_model(model, self.embedding_size)
 
         return model
 
-    def _init_text_embedding_variables(self, descriptions: DescriptionKnowledge): 
-        logging.info('Initializing text embedding variables')
-        self.text_embeddings = {}
+    def _init_embedding_mask(self, descriptions: DescriptionKnowledge): 
+        logging.info('Initializing DESCRIPTION words information')
+        embedding_masks = {}
         for idx, words in tqdm(descriptions.descriptions_set.items(), desc='Initializing Description word embedding variables'):
             id_word_idx = set([descriptions.words_vocab[x] for x in words])
-            id_word_embeddings = [
-                self.embeddings[x]  if (x in id_word_idx) 
-                else tf.constant(0, shape=(self.embeddings[len(descriptions.vocab)].shape), dtype='float32')
-                for x in range(
-                    len(descriptions.vocab), 
-                    len(descriptions.vocab) + len(descriptions.words_vocab))
+            embedding_masks[idx] = [
+                (x in id_word_idx)
+                for x in range(self.num_features, self.num_features+self.num_hidden_features)
             ]
-            self.text_embeddings[idx] = tf.concat(id_word_embeddings, axis=0)
-
-        all_text_embeddings = [
-            self.text_embeddings[idx] for idx in range(len(descriptions.vocab))
+        all_embedding_masks = [
+            tf.concat(embedding_masks[idx], axis=0)
+            for idx in range(self.num_features)
         ]
-        self.concatenated_text_embeddings = tf.Variable(
-            tf.concat([all_text_embeddings], axis=1),
-            trainable=True,
-            name='concatenated_description_embeddings',
-        )
+        self.embedding_mask = tf.Variable(tf.expand_dims(
+            tf.concat([all_embedding_masks], axis=1),
+            axis=2
+        ), trainable=False)
+
+
+    def _load_full_embedding_matrix(self):
+        return tf.repeat(
+            tf.expand_dims(
+                self.basic_hidden_embeddings,
+                axis=0
+            ), # shape: (1, num_hidden_features, embedding_size)
+            repeats=self.num_features,
+            axis=0
+        ) # shape: (num_features, num_hidden_features, embedding_size)
+
+    def _load_attention_embedding_matrix(self):
+        feature_embeddings = tf.repeat(
+            tf.expand_dims(self.basic_feature_embeddings, axis=1), # shape: (num_features, 1, embedding_size)
+            repeats=self.num_hidden_features,
+            axis=1,
+        ) # shape: (num_features, num_hidden_features, embedding_size)
+        full_embeddings = self._load_full_embedding_matrix()
+
+        return tf.concat([feature_embeddings, full_embeddings], axis=2) # shape: (num_features, num_hidden_features, 2*embedding_size)
 
     def _calculate_attention_embeddings(self):
+        full_embedding_matrix = self._load_full_embedding_matrix()
+        attention_embedding_matrix = self._load_attention_embedding_matrix()
+        
         score = self.u(tf.nn.tanh(
-            self.w1(self.concatenated_embeddings) + self.w2(self.concatenated_text_embeddings)
-        )) # shape: (num_features, num_words, 1)
+            self.w(attention_embedding_matrix)
+        )) # shape: (num_features, num_hidden_features, 1)
+        score = tf.where(self.embedding_mask, tf.math.exp(score), 0)
+        score_sum = tf.reduce_sum(score, axis=1, keepdims=True) # shape: (num_features, 1, 1)
 
-        attention_weights = tf.nn.softmax(score, axis=0) # shape: (num_features, num_words, 1)
-        context_vector = attention_weights * self.concatenated_text_embeddings  # shape: (num_features, num_words, embedding_size)
+        attention_weights = score / score_sum # shape: (num_features, num_hidden_features, 1)
+        context_vector = attention_weights * full_embedding_matrix  # shape: (num_features, num_hidden_features, embedding_size)
         context_vector = tf.reduce_sum(context_vector, axis=1)  # shape: (num_features, embedding_size)
 
         return (context_vector, attention_weights)
@@ -106,6 +137,5 @@ class DescriptionEmbedding(tf.keras.Model):
 
 
 class DescriptionModel(BaseModel):
-
     def _get_embedding_layer(self, split: TrainTestSplit, knowledge: DescriptionKnowledge) -> tf.keras.Model:
         return DescriptionEmbedding(knowledge)

@@ -300,3 +300,6 @@ data/**
 # Fasttext models
 *.bin
 *.gz
+
+# Tensorflow output
+*.tsv

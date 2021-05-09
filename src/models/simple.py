@@ -9,7 +9,6 @@ from .base import BaseModel
 class SimpleEmbedding(tf.keras.Model):
     embedding_size: int
     embeddings: Dict[int, tf.Variable]
-    concatenated_embeddings: tf.Variable # shape: (num_variables, embedding_size)
 
     def __init__(self, 
             vocab: Dict[str, int],
@@ -22,22 +21,23 @@ class SimpleEmbedding(tf.keras.Model):
         logging.info('Initializing Simple embedding variables')
         self.embeddings = {}
         for name, idx in tqdm(vocab.items(), desc='Initializing Simple embedding variables'):
-            self.embeddings[idx] = tf.Variable(
-                initial_value=tf.random.normal(shape=(1,self.embedding_size)),
+            self.embeddings[idx] = self.add_weight(
+                initializer=tf.keras.initializers.GlorotNormal(),
                 trainable=True,
-                name=name,
+                name='simple_embedding/base_embedding/' + name,
+                shape=(1,self.embedding_size),
             )
-        
-        self.concatenated_embeddings = tf.Variable(
+
+    def _load_embedding_matrix(self):
+        return tf.expand_dims(
             tf.concat(
-                [self.embeddings[idx] for idx in range(len(vocab))], 
+                [self.embeddings[idx] for idx in range(len(self.embeddings))], 
                 axis=0),
-            trainable=True,
-            name='concatenated_embeddings',
-        )
+            1) # shape: (num_variables, embedding_size)
 
     def call(self, values): # values shape: (dataset_size, max_sequence_length, num_variables)
-        return tf.linalg.matmul(values, self.concatenated_embeddings) # shape: (dataset_size, max_sequence_length, embedding_size)
+        concatenated_embeddings = self._load_embedding_matrix()
+        return tf.linalg.matmul(values, concatenated_embeddings) # shape: (dataset_size, max_sequence_length, embedding_size)
 
 
 class SimpleModel(BaseModel):
