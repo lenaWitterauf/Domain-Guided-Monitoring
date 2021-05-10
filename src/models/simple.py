@@ -4,14 +4,9 @@ from typing import Dict
 import logging
 from tqdm import tqdm
 from ..features.sequences import TrainTestSplit
-from .base import BaseModel
+from .base import BaseModel, BaseEmbedding
 
-class SimpleEmbedding(tf.keras.Model):
-    embedding_size: int
-    num_features: int
-    num_hidden_features: int
-    
-    basic_feature_embeddings: tf.Variable # shape: (num_features, embedding_size)
+class SimpleEmbedding(tf.keras.Model, BaseEmbedding):
 
     def __init__(self, 
             vocab: Dict[str, int],
@@ -32,12 +27,9 @@ class SimpleEmbedding(tf.keras.Model):
             shape=(self.num_features,self.embedding_size),
         )
 
-    def _load_embedding_matrix(self):
-        return self.basic_feature_embeddings # shape: (num_variables, embedding_size)
-
     def call(self, values): # values shape: (dataset_size, max_sequence_length, num_variables)
-        concatenated_embeddings = self._load_embedding_matrix()
-        return tf.linalg.matmul(values, concatenated_embeddings) # shape: (dataset_size, max_sequence_length, embedding_size)
+        embedding_matrix = self._final_embedding_matrix()
+        return tf.linalg.matmul(values, embedding_matrix) # shape: (dataset_size, max_sequence_length, embedding_size)
 
 
 class SimpleModel(BaseModel):

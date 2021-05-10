@@ -17,10 +17,9 @@ class EmbeddingHelper:
 
     def load_final_embeddings(self):
         final_embeddings = {}
+        final_embedding_matrix = self.embedding._final_embedding_matrix()
         for word, idx in self.vocab.items():
-            input_vec = self._create_one_hot_vector_for(idx, len(self.vocab))
-            output_vec = self.embedding.call(input_vec)
-            final_embeddings[word] = output_vec.numpy().flatten()
+            final_embeddings[word] = final_embedding_matrix[idx].numpy().flatten()
 
         return final_embeddings
 

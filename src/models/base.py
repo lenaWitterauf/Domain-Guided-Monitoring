@@ -3,7 +3,21 @@ from typing import Any
 from ..features.sequences import TrainTestSplit
 from .analysis.metrics import MulticlassAccuracy, MulticlassTrueNegativeRate, MulticlassTruePositiveRate
 
-class BaseModel():
+class BaseEmbedding:
+    embedding_size: int
+    num_features: int
+    num_hidden_features: int
+
+    basic_feature_embeddings: tf.Variable # shape: (num_features, embedding_size)
+    basic_hidden_embeddings: tf.Variable # shape: (num_hidden_features, embedding_size)
+    
+    embedding_mask: tf.Variable # shape: (num_features, num_all_features, 1)
+
+    def _final_embedding_matrix(self):
+        """Overwrite this in case embedding uses attention mechanism etc"""
+        return self.basic_feature_embeddings
+
+class BaseModel:
     lstm_dim: int = 32
     n_epochs: int = 100
     prediction_model: tf.keras.Model = None

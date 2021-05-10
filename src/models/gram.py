@@ -5,17 +5,9 @@ import logging
 from tqdm import tqdm
 from ..features.knowledge import HierarchyKnowledge
 from ..features.sequences import TrainTestSplit
-from .base import BaseModel
+from .base import BaseModel, BaseEmbedding
 
-class GramEmbedding(tf.keras.Model):
-    embedding_size: int
-    num_features: int
-    num_hidden_features: int
-
-    basic_feature_embeddings: tf.Variable # shape: (num_features, embedding_size)
-    basic_hidden_embeddings: tf.Variable # shape: (num_hidden_features, embedding_size)
-    
-    embedding_mask: tf.Variable # shape: (num_features, num_all_features, 1)
+class GramEmbedding(tf.keras.Model, BaseEmbedding):
 
     def __init__(self, 
             hierarchy: HierarchyKnowledge, 
@@ -108,9 +100,13 @@ class GramEmbedding(tf.keras.Model):
 
         return (context_vector, attention_weights)
 
-    def call(self, values): # values shape: (dataset_size, max_sequence_length, num_features)
+    def _final_embedding_matrix(self):
         context_vector, _ = self._calculate_attention_embeddings()
-        return tf.linalg.matmul(values, context_vector) # shape: (dataset_size, max_sequence_length, embedding_size)
+        return context_vector
+
+    def call(self, values): # values shape: (dataset_size, max_sequence_length, num_features)
+        embedding_matrix = self._final_embedding_matrix()
+        return tf.linalg.matmul(values, embedding_matrix) # shape: (dataset_size, max_sequence_length, embedding_size)
 
 
 class GramModel(BaseModel):
