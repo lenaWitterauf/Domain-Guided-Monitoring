@@ -1,19 +1,49 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
+import logging
 import io
 from ...features.knowledge import HierarchyKnowledge, CausalityKnowledge, DescriptionKnowledge
 
 class EmbeddingHelper:
     vocab: Dict[str, int]
-    embedding: tf.keras.Model
+    knowledge: Any
+    embedding: tf.keras.Model #BaseEmbedding
 
     def __init__(self, 
             vocab: Dict[str, int], 
+            knowledge: Any, 
             embedding: tf.keras.Model):
         self.vocab = vocab
+        self.knowledge = knowledge
         self.embedding = embedding
+
+    def load_base_embeddings(self):
+        base_embeddings = {}
+        base_embedding_matrix = self.embedding.basic_feature_embeddings
+        for word, idx in self.vocab.items():
+            base_embeddings[word + '_base'] = base_embedding_matrix[idx].numpy().flatten()
+        base_hidden_embedding_matrix = self.embedding.basic_hidden_embeddings
+        hidden_vocab = self._load_hidden_vocab()
+        for word, idx in hidden_vocab.items():
+            base_embeddings[word + '_hidden'] = base_hidden_embedding_matrix[idx-len(self.vocab)].numpy().flatten()
+
+        return base_embeddings
+
+    def _load_hidden_vocab(self) -> Dict[str, int]:
+        if isinstance(self.knowledge, DescriptionKnowledge):
+            return self.knowledge.words_vocab
+        elif isinstance(self.knowledge, CausalityKnowledge) or isinstance(self.knowledge, HierarchyKnowledge):
+            return dict([
+                    (key, value) for (key, value) 
+                    in self.knowledge.extended_vocab.items() 
+                    if key not in self.knowledge.vocab
+                ])
+        else:
+            logging.error('Knowledge type %s does not have hidden vocab', str(self.knowledge))
+            return dict()
+
 
     def load_final_embeddings(self):
         final_embeddings = {}
@@ -23,12 +53,15 @@ class EmbeddingHelper:
 
         return final_embeddings
 
-    def print_final_embeddings(self, 
+    def print_embeddings(self, 
             vec_file_name: str = 'data/vecs.tsv',
-            meta_file_name: str = 'data/meta.tsv'):
+            meta_file_name: str = 'data/meta.tsv',
+            include_base_embeddings: bool = True):
         out_vecs = io.open(vec_file_name, 'w', encoding='utf-8')
         out_meta = io.open(meta_file_name, 'w', encoding='utf-8')
         embeddings = self.load_final_embeddings()
+        if include_base_embeddings:
+            embeddings = dict(list(embeddings.items()) + list(self.load_base_embeddings().items()))
 
         for word, vec in embeddings.items():
             out_vecs.write('\t'.join([str(x) for x in vec]) + "\n")
@@ -37,15 +70,15 @@ class EmbeddingHelper:
         out_vecs.close()
         out_meta.close()
 
-    def load_attention_weights(self, knowledge):
-        if isinstance(knowledge, CausalityKnowledge):
-            return self._load_attention_weights(self._load_relevant_words_for_causal(knowledge))
-        elif isinstance(knowledge, HierarchyKnowledge):
-            return self._load_attention_weights(self._load_relevant_words_for_hierarchy(knowledge))
-        elif isinstance(knowledge, DescriptionKnowledge):
-            return self._load_attention_weights(self._load_relevant_words_for_text(knowledge))
+    def load_attention_weights(self):
+        if isinstance(self.knowledge, CausalityKnowledge):
+            return self._load_attention_weights(self._load_relevant_words_for_causal(self.knowledge))
+        elif isinstance(self.knowledge, HierarchyKnowledge):
+            return self._load_attention_weights(self._load_relevant_words_for_hierarchy(self.knowledge))
+        elif isinstance(self.knowledge, DescriptionKnowledge):
+            return self._load_attention_weights(self._load_relevant_words_for_text(self.knowledge))
         else:
-            logging.error('Unknown knowledge type %s', str(knowledge))
+            logging.error('Unknown knowledge type %s', str(self.knowledge))
             return None
 
     def _load_attention_weights(self, relevant_words: Dict[str, List[Tuple[str, int]]]):

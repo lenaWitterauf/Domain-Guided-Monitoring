@@ -26,6 +26,7 @@ class SimpleEmbedding(tf.keras.Model, BaseEmbedding):
             name='simple_embedding/basic_feature_embeddings',
             shape=(self.num_features,self.embedding_size),
         )
+        self.basic_hidden_embeddings = None
 
     def call(self, values): # values shape: (dataset_size, max_sequence_length, num_variables)
         embedding_matrix = self._final_embedding_matrix()

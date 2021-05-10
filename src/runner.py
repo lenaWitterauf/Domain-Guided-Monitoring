@@ -30,9 +30,9 @@ class ExperimentRunner:
         (knowledge, model) = self.load_model(split)
         model.train(split)
 
-        embedding_helper = models.analysis.EmbeddingHelper(split.vocab, model.embedding_layer)
-        embedding_helper.print_final_embeddings()
-        print('Learned attention weights:', embedding_helper.load_attention_weights(knowledge))
+        embedding_helper = models.analysis.EmbeddingHelper(split.vocab, knowledge, model.embedding_layer)
+        embedding_helper.print_embeddings()
+        print('Learned attention weights:', embedding_helper.load_attention_weights())
 
     def load_model(self, split: sequences.TrainTestSplit):
         if self.model_type == 'simple':
