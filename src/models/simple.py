@@ -41,7 +41,6 @@ class SimpleEmbedding(tf.keras.Model):
 
 
 class SimpleModel(BaseModel):
-
     def _get_embedding_layer(self, split: TrainTestSplit, vocab: Dict[str, int]) -> tf.keras.Model:
         return SimpleEmbedding(vocab)
 

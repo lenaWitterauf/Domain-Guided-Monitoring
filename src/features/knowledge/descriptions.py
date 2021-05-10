@@ -43,6 +43,7 @@ class DescriptionKnowledge:
                 # TODO: find alternative knowledge bases in addition to MIMIC file - eg icd9data.com
                 logging.error('Failed to load description for label %s!', label)  
                 self.descriptions[idx] = []    
+                self.descriptions_set[idx] = set()
 
         for word in self.words:
             self.words_vocab[word] = len(self.words_vocab)  + len(self.vocab)
