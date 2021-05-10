@@ -26,7 +26,7 @@ class GramEmbedding(tf.keras.Model):
         self.num_features = len(hierarchy.vocab)
         self.num_hidden_features = len(hierarchy.extended_vocab) - len(hierarchy.vocab)
 
-        self.w = tf.keras.layers.Dense(hidden_size, use_bias=True)
+        self.w = tf.keras.layers.Dense(hidden_size, use_bias=True, activation='tanh')
         self.u = tf.keras.layers.Dense(1, use_bias=False)
 
         self._init_basic_embedding_variables(hierarchy)
@@ -95,11 +95,12 @@ class GramEmbedding(tf.keras.Model):
         full_embedding_matrix = self._load_full_embedding_matrix()
         attention_embedding_matrix = self._load_attention_embedding_matrix()
         
-        score = self.u(tf.nn.tanh(
+        score = self.u(
             self.w(attention_embedding_matrix)
-        )) # shape: (num_features, num_all_features, 1)
+        ) # shape: (num_features, num_all_features, 1)
         score = tf.where(self.embedding_mask, tf.math.exp(score), 0)
         score_sum = tf.reduce_sum(score, axis=1, keepdims=True) # shape: (num_features, 1, 1)
+        score_sum = tf.where(score_sum == 0, 1., score_sum)
 
         attention_weights = score / score_sum # shape: (num_features, num_all_features, 1)
         context_vector = attention_weights * full_embedding_matrix  # shape: (num_features, num_all_features, embedding_size)
