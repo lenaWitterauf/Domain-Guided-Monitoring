@@ -1,6 +1,4 @@
 import tensorflow as tf
-import pandas as pd
-from typing import Dict, List
 import logging
 from tqdm import tqdm
 from ..features.knowledge import CausalityKnowledge
@@ -21,10 +19,10 @@ class CausalityEmbedding(tf.keras.Model, BaseEmbedding):
         self.w = tf.keras.layers.Dense(hidden_size, use_bias=True, activation='tanh')
         self.u = tf.keras.layers.Dense(1, use_bias=False)
 
-        self._init_basic_embedding_variables(causality)
+        self._init_basic_embedding_variables()
         self._init_embedding_mask(causality)
 
-    def _init_basic_embedding_variables(self, causality: CausalityKnowledge):
+    def _init_basic_embedding_variables(self):
         logging.info('Initializing CAUSALITY basic embedding variables')
         self.basic_feature_embeddings = self.add_weight(
             initializer=tf.keras.initializers.GlorotNormal(),

@@ -28,13 +28,13 @@ class BaseModel:
         raise NotImplementedError("This should be implemented by the subclass!!!")
 
     def build(self, split: TrainTestSplit, knowledge: Any):
-        input_layer = tf.keras.layers.Input(shape=(split.max_length, len(split.vocab)))
+        input_layer = tf.keras.layers.Input(shape=(split.max_x_length, len(split.x_vocab)))
         self.embedding_layer = self._get_embedding_layer(split, knowledge)
         self.prediction_model = tf.keras.models.Sequential([
             input_layer,
             self.embedding_layer,
             tf.keras.layers.LSTM(self.lstm_dim),
-            tf.keras.layers.Dense(len(split.vocab), activation='relu'),
+            tf.keras.layers.Dense(len(split.y_vocab), activation='relu'),
         ])
         self.embedding_model = tf.keras.models.Sequential([
             input_layer,

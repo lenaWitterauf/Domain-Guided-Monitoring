@@ -2,7 +2,6 @@ import tensorflow as tf
 import pandas as pd
 from typing import Dict
 import logging
-from tqdm import tqdm
 from ..features.sequences import TrainTestSplit
 from .base import BaseModel, BaseEmbedding
 

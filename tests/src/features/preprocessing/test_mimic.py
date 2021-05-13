@@ -1,7 +1,6 @@
 import unittest
 import pandas as pd
 from pathlib import Path
-from typing import List
 
 from src.features.preprocessing.mimic import MimicPreprocessor
 from ...test_utils import transform_to_string
@@ -30,7 +29,7 @@ class TestMimic(unittest.TestCase):
             },
         )
         expected_aggregated_visits['str_visits'] = expected_aggregated_visits['icd9_code'].apply(lambda x: transform_to_string(x))
-        aggregated_df = fixture.preprocess_mimic()
+        aggregated_df = fixture.load_data()
         aggregated_df['str_visits'] = aggregated_df['icd9_code'].apply(lambda x: transform_to_string(x))
 
         pd.testing.assert_frame_equal(

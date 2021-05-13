@@ -1,5 +1,4 @@
 import tensorflow as tf
-import pandas as pd
 from typing import Dict
 import logging
 import fasttext.util

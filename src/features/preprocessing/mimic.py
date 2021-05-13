@@ -4,6 +4,7 @@ import logging
 import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
+from .base import Preprocessor
 
 def _convert_to_icd9(dxStr: str):
     if dxStr.startswith('E'):
@@ -30,18 +31,17 @@ class MimicPreprocessorConfig:
     hierarchy_file: Path = Path('data/ccs_multi_dx_tool_2015.csv')
     min_admissions_per_user: int = 2
 
-class HierarchyPreprocessor:
+class HierarchyPreprocessor(Preprocessor):
     hierarchy_file: Path
 
     def __init__(self,
             hierarchy_file=Path('data/ccs_multi_dx_tool_2015.csv')):
         self.hierarchy_file = hierarchy_file
 
-    def preprocess_hierarchy(self) -> pd.DataFrame:
+    def load_data(self) -> pd.DataFrame:
         logging.info('Starting to preprocess ICD9 hierarchy')
         hierarchy_df = self._read_hierarchy_df()
         return self._transform_hierarchy_df(hierarchy_df)
-
 
     def _read_hierarchy_df(self) -> pd.DataFrame:
         logging.info('Reading hierarchy_df from %s', self.hierarchy_file)
@@ -67,20 +67,20 @@ class HierarchyPreprocessor:
         
         return transformed_hierarchy_df
 
-class ICDDescriptionPreprocessor:
+class ICDDescriptionPreprocessor(Preprocessor):
     description_file: Path
 
     def __init__(self, description_file=Path('data/D_ICD_DIAGNOSES.csv')):
         self.description_file = description_file
 
-    def load_descriptions(self):
+    def load_data(self):
         description_df = pd.read_csv(self.description_file)
         description_df['label'] = description_df['icd9_code'].apply(_convert_to_icd9)
         description_df['description'] = description_df['long_title'].apply(lambda x: x.replace('\"', ''))
         return description_df[['label', 'description']]
 
 
-class MimicPreprocessor:
+class MimicPreprocessor(Preprocessor):
     admission_file: Path
     diagnosis_file: Path 
     pkl_file: Path
@@ -96,17 +96,17 @@ class MimicPreprocessor:
         self.pkl_file = pkl_file
         self.min_admissions_per_user = min_admissions_per_user
 
-    def preprocess_mimic(self) -> pd.DataFrame:
+    def load_data(self) -> pd.DataFrame:
         logging.info('Starting to preprocess MIMIC dataset')
         admission_df = self._read_admission_df()
         diagnosis_df = self._read_diagnosis_df()
         aggregated_df = self._aggregate_codes_per_admission(diagnosis_df=diagnosis_df, admission_df=admission_df)
         return aggregated_df[aggregated_df['num_admissions'] >= self.min_admissions_per_user]
 
-    def load_mimic_from_pkl(self) -> pd.DataFrame:
+    def load_from_pkl(self) -> pd.DataFrame:
         return pd.read_pickle(self.pkl_file)
 
-    def write_mimic_to_pkl(self, aggregated_df: pd.DataFrame):
+    def write_to_pkl(self, aggregated_df: pd.DataFrame):
         self._write_to_pkl(aggregated_df)
 
     def _read_admission_df(self) -> pd.DataFrame:

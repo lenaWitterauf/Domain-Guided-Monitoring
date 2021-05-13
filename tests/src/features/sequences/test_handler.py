@@ -1,19 +1,19 @@
 import unittest
 import pandas as pd
 import tensorflow as tf
-from pathlib import Path
-from typing import List, Dict
+from typing import Dict
 
-from src.features.sequences.handler import SequenceHandler, SplittedSequence
+from src.features.sequences.transformer import NextSequenceTransformer, SplittedSequence
 from ...test_utils import transform_to_string
 
 class TestHandler(unittest.TestCase):
     def test_sequence_handler(self):
         sequence_df = self._load_sequence_df()
-        fixture = SequenceHandler(flatten=True)
+        fixture = NextSequenceTransformer(flatten_x=True)
         split = fixture.transform_train_test_split(sequence_df, 'sequence')
 
-        self._check_vocab(split.vocab)
+        self._check_vocab(split.x_vocab)
+        self._check_vocab(split.y_vocab)
         self._check_split_sizes(split)
         self._check_tensors(split)
         self._check_tensor_contents(split)
@@ -41,6 +41,8 @@ class TestHandler(unittest.TestCase):
         actual_data['str_x'] = actual_data['x'].apply(lambda x: transform_to_string(x))
         actual_data['str_y'] = actual_data['y'].apply(lambda x: transform_to_string(x))
 
+        print(expected_data)
+        print(actual_data)
         pd.testing.assert_frame_equal(
             expected_data[['str_x', 'str_y']], 
             actual_data[['str_x', 'str_y']],
@@ -56,7 +58,7 @@ class TestHandler(unittest.TestCase):
                 visit_data = []
                 for multi_idx in range(tensor.shape[2]):
                     if tensor[data_idx, visit_idx, multi_idx] == 1:
-                        visit_data.append([name for name in split.vocab.keys() if split.vocab[name] == multi_idx][0])
+                        visit_data.append([name for name in split.x_vocab.keys() if split.x_vocab[name] == multi_idx][0])
                 visits.append(visit_data)
             data.append(visits)
 
@@ -99,10 +101,12 @@ class TestHandler(unittest.TestCase):
                 [[], ['a', 'b']],
                 [[], ['a', 'b', 'c']],
                 [['a', 'b', 'c'], ['a']],
+                [[], ['a']],
             ],
             'y': [
                 [['a', 'c']],
                 [['a']],
+                [['d']],
                 [['d']],
             ],
         })

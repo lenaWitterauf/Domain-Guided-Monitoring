@@ -1,8 +1,6 @@
 import unittest
 import pandas as pd
 from pathlib import Path
-from typing import List
-import numpy as np
 
 from src.features.preprocessing.huawei import ConcurrentAggregatedLogsPreprocessor, ConcurrentAggregatedLogsDescriptionPreprocessor, ConcurrentAggregatedLogsHierarchyPreprocessor
 from ...test_utils import transform_to_string
@@ -31,7 +29,7 @@ class TestHuawei(unittest.TestCase):
             },
         )
         expected_df['str_df'] = expected_df[fixture.sequence_column_name].apply(lambda x: transform_to_string(x))
-        aggregated_df = fixture.preprocess_data()
+        aggregated_df = fixture.load_data()
         aggregated_df['str_df'] = aggregated_df[fixture.sequence_column_name].apply(lambda x: transform_to_string(x))
 
         pd.testing.assert_frame_equal(
@@ -52,7 +50,7 @@ class TestHuawei(unittest.TestCase):
                 'description': ['a a1', 'a a2', 'a a3', 'b b1', 'b b2', 'b b2', 'b'],
             },
         )
-        aggregated_df = fixture.load_descriptions()
+        aggregated_df = fixture.load_data()
         pd.testing.assert_frame_equal(
             expected_df.sort_values(by='label', ignore_index=True),
             aggregated_df.sort_values(by='label', ignore_index=True),
@@ -71,7 +69,7 @@ class TestHuawei(unittest.TestCase):
                 'child': ['a', 'b', 'a->a', 'a->a->a1', 'a.a1', 'a->a->a2', 'a.a2', 'a->a->a3', 'a.a3', 'b->b', 'b->b->b1', 'b.b1', 'b->b->b2', 'b.b2', 'b_b2'],
             },
         )
-        aggregated_df = fixture.preprocess_hierarchy().drop_duplicates()
+        aggregated_df = fixture.load_data().drop_duplicates()
         print(aggregated_df)
         pd.testing.assert_frame_equal(
             expected_df.sort_values(by='child', ignore_index=True),

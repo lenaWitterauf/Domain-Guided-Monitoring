@@ -7,6 +7,7 @@ from tqdm import tqdm
 from typing import List, Dict
 import http
 import re
+from .base import Preprocessor
 
 @dataclass_cli.add
 @dataclasses.dataclass
@@ -19,7 +20,7 @@ class HuaweiPreprocessorConfig:
     max_sequence_length: int = 100
     aggregated_log_pkl_file: Path = Path('data/huwawei_logs.pkl')
 
-class ConcurrentAggregatedLogsPreprocessor:
+class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
     log_file: Path
     pkl_file: Path
     relevant_columns: List[str]
@@ -39,7 +40,7 @@ class ConcurrentAggregatedLogsPreprocessor:
         self.max_sequence_length = max_sequence_length
         self.pkl_file = pkl_file
 
-    def preprocess_data(self) -> pd.DataFrame:
+    def load_data(self) -> pd.DataFrame:
         df = self._read_raw_df()
         labels = df.values.tolist()
         labels = [[str(l).lower() for l in label_list if len(str(l)) > 0] for label_list in labels]
@@ -70,13 +71,13 @@ class ConcurrentAggregatedLogsPreprocessor:
         rel_df = rel_df.sort_values(by=self.datetime_column_name)
         return rel_df.drop(columns=[self.datetime_column_name])
 
-    def load_logs_from_pkl(self) -> pd.DataFrame:
+    def load_from_pkl(self) -> pd.DataFrame:
         return pd.read_pickle(self.pkl_file)
 
-    def write_logs_to_pkl(self, aggregated_df: pd.DataFrame):
+    def write_to_pkl(self, aggregated_df: pd.DataFrame):
         aggregated_df.to_pickle(self.pkl_file)
 
-class ConcurrentAggregatedLogsDescriptionPreprocessor:
+class ConcurrentAggregatedLogsDescriptionPreprocessor(Preprocessor):
     log_file: Path
     relevant_columns: List[str]
 
@@ -86,7 +87,7 @@ class ConcurrentAggregatedLogsDescriptionPreprocessor:
         self.log_file = log_file
         self.relevant_columns = relevant_columns
 
-    def load_descriptions(self) -> pd.DataFrame:
+    def load_data(self) -> pd.DataFrame:
         df = pd.read_csv(self.log_file)
         rel_df = df[self.relevant_columns]
 
@@ -121,7 +122,7 @@ class ConcurrentAggregatedLogsDescriptionPreprocessor:
         
         return http_descriptions
 
-class ConcurrentAggregatedLogsHierarchyPreprocessor:
+class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
     log_file: Path
     relevant_columns: List[str]
 
@@ -131,7 +132,7 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor:
         self.log_file = log_file
         self.relevant_columns = relevant_columns
 
-    def preprocess_hierarchy(self) -> pd.DataFrame:
+    def load_data(self) -> pd.DataFrame:
         df = pd.read_csv(self.log_file)
         rel_df = df[self.relevant_columns]
 
@@ -175,15 +176,15 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor:
     def _generate_splitted_hierarchy(self, value: str) -> List[str]:
         hierarchy = []
         hierarchy_elements = re.split('[,._-]+', value)
-        for i in range(1, len(parts)):
+        for i in range(1, len(hierarchy_elements)):
             hierarchy.append('->'.join(hierarchy_elements[:i]))
 
         return hierarchy
 
     def _generate_hostname_hierarchy(self, hostname: str) -> List[str]:
-        name = value.rstrip('0123456789')
+        name = hostname.rstrip('0123456789')
         return [name]
 
     def _generate_http_hierarchy(self, http_code: str) -> List[str]:
-        return [http_code[0] + '00']
+        return [http_code[0] + 'XX']
 
