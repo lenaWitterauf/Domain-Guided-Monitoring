@@ -1,5 +1,4 @@
 from src import models
-from src import features
 from src.features import preprocessing, sequences, knowledge
 import pandas as pd
 import logging
@@ -7,7 +6,6 @@ import dataclass_cli
 import dataclasses
 import tensorflow as tf
 from typing import Any, Tuple
-from pathlib import Path
 
 @dataclass_cli.add
 @dataclasses.dataclass
@@ -15,9 +13,10 @@ class ExperimentRunner:
     sequence_type: str = 'mimic'
     model_type: str = 'simple'
     max_data_size: int = -1
-    use_dataset_generator: bool = False
+    use_dataset_generator: bool = True
     sequence_df_pkl_file: str = 'data/sequences_df.pkl'
     batch_size: int = 32
+    multilabel_classification: bool = True
 
     def run(self):
         sequence_df = self._load_sequences()
@@ -29,11 +28,11 @@ class ExperimentRunner:
         (train_dataset, test_dataset) = self._create_dataset(sequence_df)
         (knowledge, model) = self._load_model(metadata)
 
-        model.train_dataset(train_dataset, test_dataset)
+        model.train_dataset(train_dataset, test_dataset, self.multilabel_classification)
 
         embedding_helper = models.analysis.EmbeddingHelper(metadata.x_vocab, knowledge, model.embedding_layer)
-        embedding_helper.print_embeddings()
-        logging.info('Learned attention weights:', embedding_helper.load_attention_weights())
+        embedding_helper.write_embeddings()
+        embedding_helper.write_attention_weights()
 
     def _create_dataset(self, sequence_df: pd.DataFrame) -> Tuple[tf.data.Dataset, tf.data.Dataset]:
         if self.use_dataset_generator:
@@ -52,7 +51,7 @@ class ExperimentRunner:
             return (train_dataset, test_dataset)
         else:
             transformer = sequences.load_sequence_transformer()
-            split = transformer.transform_train_test_split(sequence_df, self.sequence_column_name)
+            split = transformer.transform_train_test_split(sequence_df, self.sequence_column_name)            
             train_dataset = tf.data.Dataset.from_tensor_slices(
                 (split.train_x, split.train_y),
             ).batch(self.batch_size).prefetch(tf.data.experimental.AUTOTUNE).cache()
@@ -170,6 +169,8 @@ class ExperimentRunner:
             sequence_df = sequence_df[0:self.max_data_size]
         
         transformer = sequences.load_sequence_transformer()
+        if not transformer.flatten_y:
+            self.multilabel_classification = False
         return transformer.collect_metadata(sequence_df, self.sequence_column_name)
 
 class InputError(Exception):

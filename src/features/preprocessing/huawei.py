@@ -17,7 +17,7 @@ class HuaweiPreprocessorConfig:
         default_factory=lambda: ['Hostname', 'log_level', 'programname', 'python_module', 'http_status', 'http_method'],
     )
     datetime_column_name: str = '@timestamp'
-    max_sequence_length: int = 100
+    max_sequence_length: int = -1
 
 class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
     log_file: Path
@@ -30,7 +30,7 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             log_file: Path = Path('data/logs_aggregated_concurrent.csv'),
             relevant_columns: List[str] = ['Hostname', 'log_level', 'programname', 'python_module', 'http_status', 'http_method'],
             datetime_column_name: str = '@timestamp',
-            max_sequence_length: int = 100):
+            max_sequence_length: int = -1):
         self.log_file = log_file
         self.relevant_columns = relevant_columns
         self.datetime_column_name = datetime_column_name
@@ -47,6 +47,9 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
 
     def _transform_to_subsequences(self, labels: List[List[str]]) -> List[List[List[str]]]:
         num_datapoints = len(labels)
+        if self.max_sequence_length < 0 or self.max_sequence_length > num_datapoints:
+            return [labels]
+        
         next_start_idx = 0
         next_end_idx = min(self.max_sequence_length, num_datapoints)
         subsequences = []

@@ -21,9 +21,11 @@ class BaseEmbedding:
 class BaseModel:
     lstm_dim: int = 32
     n_epochs: int = 100
-    prediction_model: tf.keras.Model = None
-    embedding_model: tf.keras.Model = None
-    embedding_layer: tf.keras.Model = None
+
+    def __init__(self):
+        self.prediction_model: tf.keras.Model = None
+        self.embedding_layer: tf.keras.Model = None
+        self.metrics: List[tf.keras.metrics.Metric] = []
 
     def _get_embedding_layer(self, metadata: SequenceMetadata, knowledge: Any) -> tf.keras.Model:
         raise NotImplementedError("This should be implemented by the subclass!!!")
@@ -37,24 +39,36 @@ class BaseModel:
             tf.keras.layers.LSTM(self.lstm_dim),
             tf.keras.layers.Dense(len(metadata.y_vocab), activation='relu'),
         ])
-        self.embedding_model = tf.keras.models.Sequential([
-            input_layer,
-            self.embedding_layer,
-        ])
         
-    def train_dataset(self, train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset):
-        self.prediction_model.compile(
-            loss=tf.keras.losses.BinaryCrossentropy(), 
-            optimizer=tf.optimizers.Adam(), 
-            metrics=[
-                MulticlassAccuracy(),
-                MulticlassTrueNegativeRate(),
-                MulticlassTruePositiveRate(),
-                tf.keras.metrics.TopKCategoricalAccuracy(k=5, name='top_5_categorical_accuracy'),
-                tf.keras.metrics.TopKCategoricalAccuracy(k=10, name='top_10_categorical_accuracy'),
-            ])
-
-        self.prediction_model.fit(
+    def train_dataset(self, train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, multilabel_classification: bool):
+        if multilabel_classification:
+            self._compile_multilabel()
+        else: 
+            self._compile_multiclass()
+        
+        self.history = self.prediction_model.fit(
             train_dataset, 
             validation_data=test_dataset,
             epochs=self.n_epochs)
+
+    def _compile_multilabel(self):
+        self.metrics = [
+            MulticlassAccuracy(),
+            MulticlassTrueNegativeRate(),
+            MulticlassTruePositiveRate(),
+        ]
+        self.prediction_model.compile(
+            loss=tf.keras.losses.BinaryCrossentropy(), 
+            optimizer=tf.optimizers.Adam(), 
+            metrics=self.metrics)
+
+    def _compile_multiclass(self):
+        self.metrics = [
+            tf.keras.metrics.CategoricalAccuracy(),
+            tf.keras.metrics.TopKCategoricalAccuracy(k=5, name='top_5_categorical_accuracy'),
+            tf.keras.metrics.TopKCategoricalAccuracy(k=10, name='top_10_categorical_accuracy'),
+        ]
+        self.prediction_model.compile(
+            loss=tf.keras.losses.CategoricalCrossentropy(), 
+            optimizer=tf.optimizers.Adam(), 
+            metrics=self.metrics)

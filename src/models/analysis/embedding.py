@@ -3,6 +3,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Any
 import logging
 import io
+import json
 from ...features.knowledge import HierarchyKnowledge, CausalityKnowledge, DescriptionKnowledge
 
 class EmbeddingHelper:
@@ -52,7 +53,7 @@ class EmbeddingHelper:
 
         return final_embeddings
 
-    def print_embeddings(self, 
+    def write_embeddings(self, 
             vec_file_name: str = 'data/vecs.tsv',
             meta_file_name: str = 'data/meta.tsv',
             include_base_embeddings: bool = True):
@@ -69,7 +70,7 @@ class EmbeddingHelper:
         out_vecs.close()
         out_meta.close()
 
-    def load_attention_weights(self):
+    def load_attention_weights(self) -> Dict[str, Dict[str, str]]:
         if isinstance(self.knowledge, CausalityKnowledge):
             return self._load_attention_weights(self._load_relevant_words_for_causal(self.knowledge))
         elif isinstance(self.knowledge, HierarchyKnowledge):
@@ -78,10 +79,19 @@ class EmbeddingHelper:
             return self._load_attention_weights(self._load_relevant_words_for_text(self.knowledge))
         else:
             logging.error('Unknown knowledge type %s', str(self.knowledge))
-            return None
+            return {}
 
-    def _load_attention_weights(self, relevant_words: Dict[str, List[Tuple[str, int]]]):
-        attention_weights = {}
+    def write_attention_weights(self, 
+            file_name: str = 'data/attention.json'):
+        attention_weights = self.load_attention_weights()
+        json_file = io.open(file_name, 'w', encoding='utf-8')
+        json_file.write(json.dumps({
+            'attention_weights': attention_weights,
+        }))
+        json_file.close()
+
+    def _load_attention_weights(self, relevant_words: Dict[str, List[Tuple[str, int]]]) -> Dict[str, Dict[str, str]]:
+        attention_weights: Dict[str, Dict[str, str]] = {}
         _, attention_matrix = self.embedding._calculate_attention_embeddings()
         
         for word, idx in self.vocab.items():
@@ -89,20 +99,20 @@ class EmbeddingHelper:
             attention_vector = attention_matrix[idx].numpy().flatten()
 
             for extra_word, extra_idx in relevant_words[word]:
-                attention_weights[word][extra_word] = attention_vector[extra_idx]
+                attention_weights[word][extra_word] = str(attention_vector[extra_idx])
 
         return attention_weights
 
     def _load_relevant_words_for_hierarchy(self, hierarchy: HierarchyKnowledge) -> Dict[str, List[Tuple[str, int]]]:
         relevant_words = {}
-        for idx, node in hierarchy.nodes.items():
+        for _, node in hierarchy.nodes.items():
             relevant_words[node.label_str] = [(n.label_str, n.label_idx) for n in node.get_ancestors()]
 
         return relevant_words
 
     def _load_relevant_words_for_causal(self, causal_knowledge: CausalityKnowledge) -> Dict[str, List[Tuple[str, int]]]:
         relevant_words = {}
-        for idx, node in causal_knowledge.nodes.items():
+        for _, node in causal_knowledge.nodes.items():
             relevant_words[node.label_str] = [(n.label_str, n.label_idx) for n in node.get_neighbours()]
 
         return relevant_words

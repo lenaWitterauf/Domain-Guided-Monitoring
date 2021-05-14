@@ -32,21 +32,21 @@ class MulticlassMetric(tf.keras.metrics.Metric):
 
 class MulticlassAccuracy(MulticlassMetric):
     def __init__(self, *args, **kwargs):
-        super().__init__(name='MulticlassAccuracy', *args, **kwargs)
+        super().__init__(name='multiclass_accuracy', *args, **kwargs)
 
     def result(self):
         return (self.true_positive_predictions + self.true_negative_predictions) / (self.true_positive_predictions + self.false_positive_predictions + self.true_negative_predictions + self.false_negative_predictions)
 
 class MulticlassTruePositiveRate(MulticlassMetric):
     def __init__(self, *args, **kwargs):
-        super().__init__(name='MulticlassTruePositiveRate', *args, **kwargs)
+        super().__init__(name='multiclass_true_positive_rate', *args, **kwargs)
 
     def result(self):
         return self.true_positive_predictions / (self.true_positive_predictions + self.false_negative_predictions)
 
 class MulticlassTrueNegativeRate(MulticlassMetric):
     def __init__(self, *args, **kwargs):
-        super().__init__(name='MulticlassTrueNegativeRate', *args, **kwargs)
+        super().__init__(name='multiclass_true_negative_rate', *args, **kwargs)
 
     def result(self):
         return self.true_negative_predictions / (self.true_negative_predictions + self.false_positive_predictions)
