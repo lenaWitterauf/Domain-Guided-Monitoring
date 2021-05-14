@@ -1,3 +1,4 @@
+from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
 from typing import Any
 from ..features.sequences import TrainTestSplit
@@ -24,24 +25,24 @@ class BaseModel:
     embedding_model: tf.keras.Model = None
     embedding_layer: tf.keras.Model = None
 
-    def _get_embedding_layer(self, split: TrainTestSplit, knowledge: Any) -> tf.keras.Model:
+    def _get_embedding_layer(self, metadata: SequenceMetadata, knowledge: Any) -> tf.keras.Model:
         raise NotImplementedError("This should be implemented by the subclass!!!")
 
-    def build(self, split: TrainTestSplit, knowledge: Any):
-        input_layer = tf.keras.layers.Input(shape=(split.max_x_length, len(split.x_vocab)))
-        self.embedding_layer = self._get_embedding_layer(split, knowledge)
+    def build(self, metadata: SequenceMetadata, knowledge: Any):
+        input_layer = tf.keras.layers.Input(shape=(metadata.max_x_length, len(metadata.x_vocab)))
+        self.embedding_layer = self._get_embedding_layer(metadata, knowledge)
         self.prediction_model = tf.keras.models.Sequential([
             input_layer,
             self.embedding_layer,
             tf.keras.layers.LSTM(self.lstm_dim),
-            tf.keras.layers.Dense(len(split.y_vocab), activation='relu'),
+            tf.keras.layers.Dense(len(metadata.y_vocab), activation='relu'),
         ])
         self.embedding_model = tf.keras.models.Sequential([
             input_layer,
             self.embedding_layer,
         ])
         
-    def train(self, data: TrainTestSplit):
+    def train_dataset(self, train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset):
         self.prediction_model.compile(
             loss=tf.keras.losses.BinaryCrossentropy(), 
             optimizer=tf.optimizers.Adam(), 
@@ -49,10 +50,11 @@ class BaseModel:
                 MulticlassAccuracy(),
                 MulticlassTrueNegativeRate(),
                 MulticlassTruePositiveRate(),
+                tf.keras.metrics.TopKCategoricalAccuracy(k=5, name='top_5_categorical_accuracy'),
+                tf.keras.metrics.TopKCategoricalAccuracy(k=10, name='top_10_categorical_accuracy'),
             ])
 
         self.prediction_model.fit(
-            x=data.train_x, 
-            y=data.train_y, 
-            validation_data=(data.test_x, data.test_y),
+            train_dataset, 
+            validation_data=test_dataset,
             epochs=self.n_epochs)

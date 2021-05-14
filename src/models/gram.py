@@ -1,8 +1,8 @@
+from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
 import logging
 from tqdm import tqdm
 from ..features.knowledge import HierarchyKnowledge
-from ..features.sequences import TrainTestSplit
 from .base import BaseModel, BaseEmbedding
 
 class GramEmbedding(tf.keras.Model, BaseEmbedding):
@@ -108,5 +108,5 @@ class GramEmbedding(tf.keras.Model, BaseEmbedding):
 
 
 class GramModel(BaseModel):
-    def _get_embedding_layer(self, split: TrainTestSplit, knowledge: HierarchyKnowledge()) -> tf.keras.Model:
+    def _get_embedding_layer(self, metadata: SequenceMetadata, knowledge: HierarchyKnowledge) -> tf.keras.Model:
         return GramEmbedding(knowledge)

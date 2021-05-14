@@ -1,10 +1,10 @@
+from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
 from typing import Dict
 import logging
 import fasttext.util
 from tqdm import tqdm
 from ..features.knowledge import DescriptionKnowledge
-from ..features.sequences import TrainTestSplit
 from .base import BaseModel
 
 class DescriptionPaperEmbedding(tf.keras.Model):
@@ -81,5 +81,5 @@ class DescriptionPaperEmbedding(tf.keras.Model):
 
 
 class DescriptionPaperModel(BaseModel):
-    def _get_embedding_layer(self, split: TrainTestSplit, knowledge: DescriptionKnowledge) -> tf.keras.Model:
+    def _get_embedding_layer(self, metadata: SequenceMetadata, knowledge: DescriptionKnowledge) -> tf.keras.Model:
         return DescriptionPaperEmbedding(knowledge)

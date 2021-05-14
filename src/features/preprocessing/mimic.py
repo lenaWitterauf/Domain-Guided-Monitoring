@@ -27,9 +27,9 @@ def _convert_to_3digit_icd9(dxStr: str):
 class MimicPreprocessorConfig:
     admission_file: Path = Path('data/ADMISSIONS.csv')
     diagnosis_file: Path = Path('data/DIAGNOSES_ICD.csv')
-    pkl_file: Path = Path('data/mimic_processed.pkl')
     hierarchy_file: Path = Path('data/ccs_multi_dx_tool_2015.csv')
     min_admissions_per_user: int = 2
+    sequence_column_name: str = 'icd9_code_converted' #'icd9_code_converted_3digits'
 
 class HierarchyPreprocessor(Preprocessor):
     hierarchy_file: Path
@@ -83,17 +83,14 @@ class ICDDescriptionPreprocessor(Preprocessor):
 class MimicPreprocessor(Preprocessor):
     admission_file: Path
     diagnosis_file: Path 
-    pkl_file: Path
     min_admissions_per_user: int
 
     def __init__(self, 
             admission_file=Path('data/ADMISSIONS.csv'), 
             diagnosis_file=Path('data/DIAGNOSES_ICD.csv'), 
-            pkl_file=Path('data/mimic_processed.pkl'),
             min_admissions_per_user=2):
         self.admission_file = admission_file
         self.diagnosis_file = diagnosis_file
-        self.pkl_file = pkl_file
         self.min_admissions_per_user = min_admissions_per_user
 
     def load_data(self) -> pd.DataFrame:
@@ -102,12 +99,6 @@ class MimicPreprocessor(Preprocessor):
         diagnosis_df = self._read_diagnosis_df()
         aggregated_df = self._aggregate_codes_per_admission(diagnosis_df=diagnosis_df, admission_df=admission_df)
         return aggregated_df[aggregated_df['num_admissions'] >= self.min_admissions_per_user]
-
-    def load_from_pkl(self) -> pd.DataFrame:
-        return pd.read_pickle(self.pkl_file)
-
-    def write_to_pkl(self, aggregated_df: pd.DataFrame):
-        self._write_to_pkl(aggregated_df)
 
     def _read_admission_df(self) -> pd.DataFrame:
         logging.info('Reading admission_df from %s', self.admission_file)
@@ -144,7 +135,3 @@ class MimicPreprocessor(Preprocessor):
         }).reset_index()
         admissions_per_subject['num_admissions'] = admissions_per_subject['hadm_id'].apply(len)
         return admissions_per_subject
-
-    def _write_to_pkl(self, aggregated_df: pd.DataFrame):
-        relevant_df = aggregated_df[aggregated_df['num_admissions'] >= self.min_admissions_per_user]
-        relevant_df.to_pickle(self.pkl_file)

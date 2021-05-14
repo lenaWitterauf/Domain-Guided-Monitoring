@@ -18,11 +18,9 @@ class HuaweiPreprocessorConfig:
     )
     datetime_column_name: str = '@timestamp'
     max_sequence_length: int = 100
-    aggregated_log_pkl_file: Path = Path('data/huwawei_logs.pkl')
 
 class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
     log_file: Path
-    pkl_file: Path
     relevant_columns: List[str]
     datetime_column_name: str
     max_sequence_length: int
@@ -32,13 +30,11 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             log_file: Path = Path('data/logs_aggregated_concurrent.csv'),
             relevant_columns: List[str] = ['Hostname', 'log_level', 'programname', 'python_module', 'http_status', 'http_method'],
             datetime_column_name: str = '@timestamp',
-            max_sequence_length: int = 100,
-            pkl_file: Path = Path('data/huwawei_logs.pkl')):
+            max_sequence_length: int = 100):
         self.log_file = log_file
         self.relevant_columns = relevant_columns
         self.datetime_column_name = datetime_column_name
         self.max_sequence_length = max_sequence_length
-        self.pkl_file = pkl_file
 
     def load_data(self) -> pd.DataFrame:
         df = self._read_raw_df()
@@ -70,12 +66,6 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
         rel_df = rel_df.fillna('')
         rel_df = rel_df.sort_values(by=self.datetime_column_name)
         return rel_df.drop(columns=[self.datetime_column_name])
-
-    def load_from_pkl(self) -> pd.DataFrame:
-        return pd.read_pickle(self.pkl_file)
-
-    def write_to_pkl(self, aggregated_df: pd.DataFrame):
-        aggregated_df.to_pickle(self.pkl_file)
 
 class ConcurrentAggregatedLogsDescriptionPreprocessor(Preprocessor):
     log_file: Path

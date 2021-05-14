@@ -4,45 +4,35 @@ from tqdm import tqdm
 from typing import Dict, Tuple, List
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
+from .config import SequenceConfig
+import logging
 
-
-class SplittedSequence:
-    x: List[List[str]] = []
-    y: List[str] = []
-    x_vecs: List[tf.Tensor] = []
-    x_vecs_stacked: tf.Tensor
-    y_vec: tf.Tensor
+class SequenceMetadata:
+    def __init__(self, max_x_length, max_sequence_length, max_features_per_sequence, x_vocab, y_vocab):
+        self.max_x_length: int = max_x_length
+        self.max_sequence_length: int = max_sequence_length
+        self.max_features_per_sequence: int = max_features_per_sequence
+        self.x_vocab: Dict[str, int] = x_vocab
+        self.y_vocab: Dict[str, int] = y_vocab
 
 class TrainTestSplit:
-    train_x: tf.Tensor
-    test_x: tf.Tensor
-    train_y: tf.Tensor
-    test_y: tf.Tensor
+    def __init__(self, train_x, test_x, train_y, test_y, metadata):
+        self.train_x: tf.Tensor     = train_x
+        self.test_x: tf.Tensor = test_x
+        self.train_y: tf.Tensor = train_y
+        self.test_y: tf.Tensor = test_y
+        self.metadata: SequenceMetadata = metadata
 
-    max_x_length: int
-    x_vocab: Dict[str, int]
-    y_vocab: Dict[str, int]
-
-    def __init__(self, train_x, test_x, train_y, test_y, max_x_length, x_vocab, y_vocab):
-        self.train_x = train_x
-        self.test_x = test_x
-        self.train_y = train_y
-        self.test_y = test_y
-        self.max_x_length = max_x_length
-        self.x_vocab = x_vocab
-        self.y_vocab = y_vocab
+class _SplittedSequence:
+    def __init__(self):
+        self.x: List[List[str]] = []
+        self.y: List[str] = []
+        self.x_vecs: List[tf.Tensor] = []
+        self.x_vecs_stacked: tf.Tensor = None
+        self.y_vec: tf.Tensor = None
 
 class NextSequenceTransformer:
     """Split Sequences for next sequence prediction."""
-    test_percentage: float
-    random_test_split: bool
-    random_state: int
-    flatten_x: bool
-    flatten_y: bool
-    max_window_size: int
-    min_window_size: int
-    window_overlap: bool
-
     def __init__(self, 
             test_percentage: float=0.1,
             random_test_split: bool=True,
@@ -61,34 +51,36 @@ class NextSequenceTransformer:
         self.min_window_size  = min_window_size
         self.window_overlap = window_overlap
 
-    def transform_train_test_split(self, sequence_df: pd.DataFrame, sequence_column_name: str) -> TrainTestSplit:
-        vocab = self._generate_vocab(sequence_df, sequence_column_name)
+    def collect_metadata(self, sequence_df: pd.DataFrame, sequence_column_name: str) -> SequenceMetadata:
+        (x_vocab, y_vocab) = self._generate_vocabs(sequence_df, sequence_column_name)
         max_sequence_length = sequence_df[sequence_column_name].apply(len).max() - 1
         max_features_per_sequence = sequence_df[sequence_column_name].apply(lambda x: sum([len(y) for y in x])).max()
 
+        return SequenceMetadata(
+            max_x_length=(max_sequence_length if self.flatten_x else max_features_per_sequence),
+            max_sequence_length=max_sequence_length,
+            max_features_per_sequence=max_features_per_sequence,
+            x_vocab=x_vocab,
+            y_vocab=y_vocab
+        )
+
+    def transform_train_test_split(self, sequence_df: pd.DataFrame, sequence_column_name: str) -> TrainTestSplit:
+        metadata = self.collect_metadata(sequence_df, sequence_column_name)
         train_sequences, test_sequences = self._split_train_test(sequence_df, sequence_column_name)
         
         transformed_train_sequences = self._transform_sequences(
             sequences=train_sequences, 
-            x_vocab=vocab, 
-            y_vocab=vocab,
-            max_sequence_length=max_sequence_length, 
-            max_features_per_sequence=max_features_per_sequence)
+            metadata=metadata)
         transformed_test_sequences = self._transform_sequences(
             sequences=test_sequences, 
-            x_vocab=vocab, 
-            y_vocab=vocab,
-            max_sequence_length=max_sequence_length, 
-            max_features_per_sequence=max_features_per_sequence)
+            metadata=metadata)
 
         return TrainTestSplit(
             train_x=tf.stack([transformed.x_vecs_stacked for transformed in transformed_train_sequences]), 
             test_x=tf.stack([transformed.x_vecs_stacked for transformed in transformed_test_sequences]), 
             train_y=tf.stack([[transformed.y_vec] for transformed in transformed_train_sequences]), 
             test_y=tf.stack([[transformed.y_vec] for transformed in transformed_test_sequences]),
-            max_x_length=(max_sequence_length if self.flatten_x else max_features_per_sequence),
-            x_vocab=vocab,
-            y_vocab=vocab)
+            metadata=metadata)
 
     def _split_train_test(self, sequence_df: pd.DataFrame, sequence_column_name: str) -> Tuple[List[List[List[str]]], List[List[List[str]]]]:
         if self.random_test_split:
@@ -105,35 +97,29 @@ class NextSequenceTransformer:
 
     def _transform_sequences(self, 
             sequences: List[List[List[str]]], 
-            x_vocab: Dict[str, int], 
-            y_vocab: Dict[str, int], 
-            max_sequence_length: int, 
-            max_features_per_sequence: int) -> List[SplittedSequence]:
+            metadata: SequenceMetadata) -> List[_SplittedSequence]:
         splitted_sequences = self._split_sequences(sequences)
         for splitted in tqdm(splitted_sequences, desc='Transforming splitted sequences to tensors'):
-            self._translate_and_pad(splitted, 
-                x_vocab=x_vocab, 
-                y_vocab=y_vocab, 
-                max_sequence_length=max_sequence_length, 
-                max_features_per_sequence=max_features_per_sequence)
+            self._translate_and_pad(splitted, metadata)
 
         return splitted_sequences
         
-    def _split_sequences(self, sequences: List[List[List[str]]]) -> List[SplittedSequence]:
+    def _split_sequences(self, sequences: List[List[List[str]]], tqdm_log=True) -> List[_SplittedSequence]:
         splitted_sequences = []
-        for sequence in tqdm(sequences, desc='Splitting sequences into x/y windows'):
+        sequence_iterator = tqdm(sequences, desc='Splitting sequences into x/y windows') if tqdm_log else sequences
+        for sequence in sequence_iterator:
             splitted_sequences.extend(self._split_sequence(sequence))
 
         return splitted_sequences
     
-    def _split_sequence(self, sequence: List[List[str]]) -> List[SplittedSequence]:
+    def _split_sequence(self, sequence: List[List[str]]) -> List[_SplittedSequence]:
         if self.window_overlap:
             return self._split_sequence_overlap(sequence)
         else:
             return self._split_sequence_no_overlap(sequence)
 
-    def _split_sequence_overlap(self, sequence: List[List[str]]) -> List[SplittedSequence]:
-        splitted_sequences: List[SplittedSequence] = []
+    def _split_sequence_overlap(self, sequence: List[List[str]]) -> List[_SplittedSequence]:
+        splitted_sequences: List[_SplittedSequence] = []
         for start_index in range(0, len(sequence)):
             min_end_index = start_index + self.min_window_size
             max_end_index = min(start_index + self.max_window_size + 1, len(sequence))
@@ -145,8 +131,8 @@ class NextSequenceTransformer:
 
         return splitted_sequences
 
-    def _split_sequence_no_overlap(self, sequence: List[List[str]]) -> List[SplittedSequence]:
-        splitted_sequences: List[SplittedSequence] = []
+    def _split_sequence_no_overlap(self, sequence: List[List[str]]) -> List[_SplittedSequence]:
+        splitted_sequences: List[_SplittedSequence] = []
         start_index = 0
         max_start_index = len(sequence) - 1 - self.min_window_size
         while start_index <= max_start_index:
@@ -159,17 +145,17 @@ class NextSequenceTransformer:
 
         return splitted_sequences
 
-    def _split_sequence_y_flat(self, sequence: List[List[str]], start_index: int, end_index: int) -> List[SplittedSequence]:
-        splitted_sequence = SplittedSequence()
+    def _split_sequence_y_flat(self, sequence: List[List[str]], start_index: int, end_index: int) -> List[_SplittedSequence]:
+        splitted_sequence = _SplittedSequence()
         splitted_sequence.x = sequence[start_index:end_index]
         splitted_sequence.y = sequence[end_index]
         return [splitted_sequence]
 
-    def _split_sequence_y_wide(self, sequence: List[List[str]], start_index: int, end_index: int) -> List[SplittedSequence]:
+    def _split_sequence_y_wide(self, sequence: List[List[str]], start_index: int, end_index: int) -> List[_SplittedSequence]:
         splitted_sequences = []
         y_features = sequence[end_index]
         for feature in y_features:
-            splitted_sequence = SplittedSequence()
+            splitted_sequence = _SplittedSequence()
             splitted_sequence.x = sequence[start_index:end_index]
             splitted_sequence.y = [feature]
             splitted_sequences.append(splitted_sequence)
@@ -184,39 +170,40 @@ class NextSequenceTransformer:
         return tf.convert_to_tensor(feature_vec, dtype='float32')
 
     def _translate_and_pad_x_flat(self, 
-            splitted: SplittedSequence, 
+            splitted: _SplittedSequence, 
             x_vocab: Dict[str, int], 
-            max_sequence_length: int):
+            max_sequence_length: int) -> tf.Tensor:
         splitted.x_vecs = []
         for _ in range(max_sequence_length - len(splitted.x)):
             splitted.x_vecs.append(self._transform_to_tensor([], x_vocab))
         for x in splitted.x:
             splitted.x_vecs.append(self._transform_to_tensor(x, x_vocab))
-        splitted.x_vecs_stacked = tf.stack(splitted.x_vecs)
+        return tf.stack(splitted.x_vecs)
 
     def _translate_and_pad_x_wide(self, 
-            splitted: SplittedSequence, 
+            splitted: _SplittedSequence, 
             x_vocab: Dict[str, int], 
-            max_features_per_sequence: int):
+            max_features_per_sequence: int) -> tf.Tensor:
         all_features = [feature for x in splitted.x for feature in x]
         splitted.x_vecs = []
         for _ in range(max_features_per_sequence - len(all_features)):
             splitted.x_vecs.append(self._transform_to_tensor([], x_vocab))
         for feature in all_features:
             splitted.x_vecs.append(self._transform_to_tensor([feature], x_vocab))
-        splitted.x_vecs_stacked = tf.stack(splitted.x_vecs)
+        return tf.stack(splitted.x_vecs)
 
     def _translate_and_pad(self, 
-            splitted: SplittedSequence, 
-            x_vocab: Dict[str, int], 
-            y_vocab: Dict[str, int], 
-            max_sequence_length: int, 
-            max_features_per_sequence: int):
-        splitted.y_vec = self._transform_to_tensor(splitted.y, y_vocab)
+            splitted: _SplittedSequence, 
+            metadata: SequenceMetadata):
+        splitted.y_vec = self._transform_to_tensor(splitted.y, metadata.y_vocab)
         if self.flatten_x:
-            self._translate_and_pad_x_flat(splitted, x_vocab, max_sequence_length)
+            splitted.x_vecs_stacked = self._translate_and_pad_x_flat(splitted, metadata.x_vocab, metadata.max_sequence_length)
         else:
-            self._translate_and_pad_x_wide(splitted, x_vocab, max_features_per_sequence)
+            splitted.x_vecs_stacked = self._translate_and_pad_x_wide(splitted, metadata.x_vocab, metadata.max_features_per_sequence)
+
+    def _generate_vocabs(self, sequence_df: pd.DataFrame, sequence_column_name: str) -> Tuple[Dict[str, int], Dict[str, int]]:
+        vocab = self._generate_vocab(sequence_df, sequence_column_name)
+        return (vocab, vocab)
         
     def _generate_vocab(self, sequence_df: pd.DataFrame, sequence_column_name: str) -> Dict[str, int]:
         flattened_sequences = sequence_df[sequence_column_name].agg(
@@ -236,43 +223,16 @@ class NextSequenceTransformer:
 
 class NextPartialSequenceTransformer(NextSequenceTransformer):
     """Split Sequences for next sequence prediction, but only keep some of the features as prediciton goals."""
-
     valid_y_features: List[str]
     remove_empty_v_vecs: bool
 
-    def transform_train_test_split(self, sequence_df: pd.DataFrame, sequence_column_name: str) -> TrainTestSplit:
+    def _generate_vocabs(self, sequence_df: pd.DataFrame, sequence_column_name: str) -> Tuple[Dict[str, int], Dict[str, int]]:
         x_vocab = self._generate_vocab(sequence_df, sequence_column_name)
         y_vocab = self._generate_vocab_from_list(self.valid_y_features)
+        return (x_vocab, y_vocab)
 
-        max_sequence_length = sequence_df[sequence_column_name].apply(len).max() - 1
-        max_features_per_sequence = sequence_df[sequence_column_name].apply(lambda x: sum([len(y) for y in x])).max()
-
-        train_sequences, test_sequences = self._split_train_test(sequence_df, sequence_column_name)
-        
-        transformed_train_sequences = self._transform_sequences(
-            sequences=train_sequences, 
-            x_vocab=x_vocab, 
-            y_vocab=y_vocab,
-            max_sequence_length=max_sequence_length, 
-            max_features_per_sequence=max_features_per_sequence)
-        transformed_test_sequences = self._transform_sequences(
-            sequences=test_sequences,
-            x_vocab=x_vocab, 
-            y_vocab=y_vocab,
-            max_sequence_length=max_sequence_length, 
-            max_features_per_sequence=max_features_per_sequence)
-
-        return TrainTestSplit(
-            train_x=tf.stack([transformed.x_vecs_stacked for transformed in transformed_train_sequences]), 
-            test_x=tf.stack([transformed.x_vecs_stacked for transformed in transformed_test_sequences]), 
-            train_y=tf.stack([[transformed.y_vec] for transformed in transformed_train_sequences]), 
-            test_y=tf.stack([[transformed.y_vec] for transformed in transformed_test_sequences]),
-            max_x_length=(max_sequence_length if self.flatten_x else max_features_per_sequence),
-            x_vocab=x_vocab,
-            y_vocab=y_vocab)
-
-    def _transform_sequences(self, sequences: List[List[List[str]]], x_vocab: Dict[str, int], y_vocab: Dict[str, int], max_sequence_length: int, max_features_per_sequence: int) -> List[SplittedSequence]:
-        transformed_sequences = super()._transform_sequences(sequences, x_vocab, y_vocab, max_sequence_length, max_features_per_sequence)
+    def _transform_sequences(self, sequences: List[List[List[str]]], metadata: SequenceMetadata) -> List[_SplittedSequence]:
+        transformed_sequences = super()._transform_sequences(sequences, metadata)
         if self.remove_empty_v_vecs:
             return [
                 sequence for sequence in transformed_sequences
@@ -280,3 +240,32 @@ class NextPartialSequenceTransformer(NextSequenceTransformer):
             ]
         else:
             return transformed_sequences
+
+def load_sequence_transformer() -> NextSequenceTransformer:
+    config = SequenceConfig()
+    if len(config.valid_y_features) > 0:
+        logging.debug('Using only features %s as prediction goals', ','.join(config.valid_y_features))
+        transformer = NextPartialSequenceTransformer(
+            test_percentage=config.test_percentage,
+            random_test_split=config.random_test_split,
+            random_state=config.random_state,
+            flatten_x=config.flatten_x,
+            flatten_y=config.flatten_y,
+            max_window_size=config.max_window_size,
+            min_window_size=config.min_window_size,
+            window_overlap=config.window_overlap,
+        )
+        transformer.valid_y_features = config.valid_y_features
+        transformer.remove_empty_v_vecs = config.remove_empty_v_vecs
+        return transformer
+    else:
+        return NextSequenceTransformer(
+            test_percentage=config.test_percentage,
+            random_test_split=config.random_test_split,
+            random_state=config.random_state,
+            flatten_x=config.flatten_x,
+            flatten_y=config.flatten_y,
+            max_window_size=config.max_window_size,
+            min_window_size=config.min_window_size,
+            window_overlap=config.window_overlap,
+        )

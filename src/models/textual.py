@@ -1,9 +1,9 @@
+from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
 import logging
 from tqdm import tqdm
 import fasttext.util
 from ..features.knowledge import DescriptionKnowledge
-from ..features.sequences import TrainTestSplit
 from .base import BaseModel, BaseEmbedding
 
 class DescriptionEmbedding(tf.keras.Model, BaseEmbedding):
@@ -132,5 +132,5 @@ class DescriptionEmbedding(tf.keras.Model, BaseEmbedding):
 
 
 class DescriptionModel(BaseModel):
-    def _get_embedding_layer(self, split: TrainTestSplit, knowledge: DescriptionKnowledge) -> tf.keras.Model:
+    def _get_embedding_layer(self, metadata: SequenceMetadata, knowledge: DescriptionKnowledge) -> tf.keras.Model:
         return DescriptionEmbedding(knowledge)

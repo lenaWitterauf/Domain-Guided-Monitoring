@@ -1,8 +1,8 @@
+from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
 import logging
 from tqdm import tqdm
 from ..features.knowledge import CausalityKnowledge
-from ..features.sequences import TrainTestSplit
 from .base import BaseModel, BaseEmbedding
 
 class CausalityEmbedding(tf.keras.Model, BaseEmbedding):
@@ -11,7 +11,7 @@ class CausalityEmbedding(tf.keras.Model, BaseEmbedding):
             causality: CausalityKnowledge, 
             embedding_size: int = 16, 
             hidden_size: int = 16):
-        super(GramEmbedding, self).__init__()
+        super(CausalityEmbedding, self).__init__()
         self.embedding_size = embedding_size
         self.num_features = len(causality.vocab)
         self.num_hidden_features = len(causality.extended_vocab) - len(causality.vocab)
@@ -108,5 +108,5 @@ class CausalityEmbedding(tf.keras.Model, BaseEmbedding):
 
 
 class CausalityModel(BaseModel):
-    def _get_embedding_layer(self, split: TrainTestSplit, knowledge: CausalityKnowledge) -> tf.keras.Model:
+    def _get_embedding_layer(self, metadata: SequenceMetadata, knowledge: CausalityKnowledge) -> tf.keras.Model:
         return CausalityEmbedding(knowledge)
