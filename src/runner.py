@@ -18,6 +18,12 @@ class ExperimentRunner:
     sequence_df_pkl_file: str = 'data/sequences_df.pkl'
     batch_size: int = 32
     multilabel_classification: bool = True
+    n_epochs: int = 100
+    # using this will cache dataset accross different runs.
+    # don't use this if you change settings for creating the dataset!
+    dataset_generator_cache_file: str = ''
+    dataset_shuffle_seed: int = 12345
+
 
     def run(self):
         sequence_df = self._load_sequences()
@@ -29,6 +35,7 @@ class ExperimentRunner:
         (train_dataset, test_dataset) = self._create_dataset(sequence_df)
         (knowledge, model) = self._load_model(metadata)
 
+        model.n_epochs = self.n_epochs
         model.train_dataset(train_dataset, test_dataset, self.multilabel_classification)
 
         embedding_helper = analysis.EmbeddingHelper(metadata.x_vocab, knowledge, model.embedding_layer)
@@ -45,12 +52,18 @@ class ExperimentRunner:
                 sequences.generate_train,
                 args=(self.sequence_df_pkl_file, self.sequence_column_name),
                 output_types=(tf.float32, tf.float32),
-            ).batch(self.batch_size).prefetch(tf.data.experimental.AUTOTUNE).cache()
+            ).batch(self.batch_size).prefetch(
+                tf.data.experimental.AUTOTUNE
+            ).cache(
+                self._get_cache_file_name(is_test=False)
+            ).shuffle(1000, seed=self.dataset_shuffle_seed, reshuffle_each_iteration=True)
             test_dataset = tf.data.Dataset.from_generator(
                 sequences.generate_test,
                 args=(self.sequence_df_pkl_file, self.sequence_column_name),
                 output_types=(tf.float32, tf.float32),
-            ).batch(self.batch_size).prefetch(tf.data.experimental.AUTOTUNE).cache()
+            ).batch(self.batch_size).prefetch(
+                tf.data.experimental.AUTOTUNE
+            ).cache(self._get_cache_file_name(is_test=True))
 
             return (train_dataset, test_dataset)
         else:
@@ -58,12 +71,20 @@ class ExperimentRunner:
             split = transformer.transform_train_test_split(sequence_df, self.sequence_column_name)            
             train_dataset = tf.data.Dataset.from_tensor_slices(
                 (split.train_x, split.train_y),
-            ).batch(self.batch_size).prefetch(tf.data.experimental.AUTOTUNE).cache()
+            ).batch(self.batch_size).prefetch(
+                tf.data.experimental.AUTOTUNE
+            ).cache().shuffle(1000, seed=self.dataset_shuffle_seed, reshuffle_each_iteration=True)
             test_dataset = tf.data.Dataset.from_tensor_slices(
                 (split.test_x, split.test_y),
             ).batch(self.batch_size).prefetch(tf.data.experimental.AUTOTUNE).cache()
 
             return (train_dataset, test_dataset)
+
+    def _get_cache_file_name(self, is_test: bool) -> str:
+        if len(self.dataset_generator_cache_file) < 1:
+            return ''
+        else:
+            return self.dataset_generator_cache_file + ('_test' if is_test else '_train')
 
     def _load_model(self, metadata: sequences.SequenceMetadata) -> Tuple[Any, models.BaseModel]:
         model: models.BaseModel
