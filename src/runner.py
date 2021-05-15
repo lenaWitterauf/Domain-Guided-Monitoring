@@ -1,4 +1,5 @@
 from src import models
+from src.models import analysis
 from src.features import preprocessing, sequences, knowledge
 import pandas as pd
 import logging
@@ -30,9 +31,12 @@ class ExperimentRunner:
 
         model.train_dataset(train_dataset, test_dataset, self.multilabel_classification)
 
-        embedding_helper = models.analysis.EmbeddingHelper(metadata.x_vocab, knowledge, model.embedding_layer)
+        embedding_helper = analysis.EmbeddingHelper(metadata.x_vocab, knowledge, model.embedding_layer)
         embedding_helper.write_embeddings()
         embedding_helper.write_attention_weights()
+
+        metric_plotter = models.MetricPlotter(model)
+        metric_plotter.plot_all_metrics()
 
     def _create_dataset(self, sequence_df: pd.DataFrame) -> Tuple[tf.data.Dataset, tf.data.Dataset]:
         if self.use_dataset_generator:

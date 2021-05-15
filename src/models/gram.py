@@ -2,7 +2,7 @@ from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
 import logging
 from tqdm import tqdm
-from ..features.knowledge import HierarchyKnowledge
+from src.features.knowledge import HierarchyKnowledge
 from .base import BaseModel, BaseEmbedding
 
 class GramEmbedding(tf.keras.Model, BaseEmbedding):

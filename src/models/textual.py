@@ -3,7 +3,7 @@ import tensorflow as tf
 import logging
 from tqdm import tqdm
 import fasttext.util
-from ..features.knowledge import DescriptionKnowledge
+from src.features.knowledge import DescriptionKnowledge
 from .base import BaseModel, BaseEmbedding
 
 class DescriptionEmbedding(tf.keras.Model, BaseEmbedding):

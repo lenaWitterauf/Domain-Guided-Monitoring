@@ -297,6 +297,10 @@ tags
 data/**
 !data/.gitkeep
 
+# Plotting directory
+plots/**
+!plots/.gitkeep
+
 # Fasttext models
 *.bin
 *.gz

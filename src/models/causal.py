@@ -2,7 +2,7 @@ from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
 import logging
 from tqdm import tqdm
-from ..features.knowledge import CausalityKnowledge
+from src.features.knowledge import CausalityKnowledge
 from .base import BaseModel, BaseEmbedding
 
 class CausalityEmbedding(tf.keras.Model, BaseEmbedding):

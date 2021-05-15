@@ -4,7 +4,7 @@ from typing import Dict
 import logging
 import fasttext.util
 from tqdm import tqdm
-from ..features.knowledge import DescriptionKnowledge
+from src.features.knowledge import DescriptionKnowledge
 from .base import BaseModel
 
 class DescriptionPaperEmbedding(tf.keras.Model):

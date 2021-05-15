@@ -1,7 +1,6 @@
 from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
 from typing import Any
-from ..features.sequences import TrainTestSplit
 from .analysis.metrics import MulticlassAccuracy, MulticlassTrueNegativeRate, MulticlassTruePositiveRate
 
 class BaseEmbedding:
