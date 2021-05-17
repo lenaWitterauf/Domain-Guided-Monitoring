@@ -1,3 +1,4 @@
+from src.features.knowledge.causality import CausalityKnowledge
 from src import models
 from src.models import analysis
 from src.features import preprocessing, sequences, knowledge
@@ -140,8 +141,16 @@ class ExperimentRunner:
             raise InputError(message='Description knowledge not available for data type: ' + str(self.sequence_type))
 
     def _load_causal_knowledge(self, metadata: sequences.SequenceMetadata) -> knowledge.CausalityKnowledge:
-        logging.fatal('Causal knowledge not available for data type %s', self.sequence_type)
-        raise InputError(message='Causal knowledge not available for data type: ' + str(self.sequence_type))
+        causality_preprocessor: preprocessing.Preprocessor
+        if self.sequence_type == 'huawei_logs':
+            causality_preprocessor = preprocessing.ConcurrentAggregatedLogsCausalityPreprocessor()
+            causality_df = causality_preprocessor.load_data()
+            causality = knowledge.CausalityKnowledge()
+            causality.build_causality_from_df(causality_df, metadata.x_vocab)
+            return causality
+        else:
+            logging.fatal('Causal knowledge not available for data type %s', self.sequence_type)
+            raise InputError(message='Causal knowledge not available for data type: ' + str(self.sequence_type))
 
     def _load_hierarchy_knowledge(self, metadata: sequences.SequenceMetadata) -> knowledge.HierarchyKnowledge:
         hierarchy_preprocessor: preprocessing.Preprocessor

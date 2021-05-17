@@ -8,6 +8,7 @@ from typing import List, Dict
 import http
 import re
 from .base import Preprocessor
+from collections import Counter
 
 @dataclass_cli.add
 @dataclasses.dataclass
@@ -85,6 +86,7 @@ class ConcurrentAggregatedLogsDescriptionPreprocessor(Preprocessor):
         rel_df = df[self.relevant_columns]
 
         http_descriptions = self._load_http_descriptions()
+        column_descriptions = self._get_column_descriptions()
         description_df = pd.DataFrame(columns=['label', 'description'])
         for column in self.relevant_columns:
             values = set(rel_df[column].dropna())
@@ -100,12 +102,25 @@ class ConcurrentAggregatedLogsDescriptionPreprocessor(Preprocessor):
                 else:
                     description = ' '.join(re.split('[,._-]+', value))
                 
+                if column in column_descriptions:
+                    description = column_descriptions[column] + ' ' + description
+                
                 description_df = description_df.append({
                     'label': value,
                     'description': description,
                 }, ignore_index=True)
     
         return description_df[['label', 'description']]
+
+    def _get_column_descriptions(self) -> Dict[str, str]:
+        return {
+            'Hostname': 'Host name',
+            'log_level': 'Log level',
+            'programname': 'Program name',
+            'python_module': 'Python module', 
+            'http_status': 'HTTP status', 
+            'http_method': 'HTTP method',
+        }
 
     def _load_http_descriptions(self) -> Dict[str, str]:
         logging.debug('Initializing HTTP Status descriptions')
@@ -180,4 +195,55 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
 
     def _generate_http_hierarchy(self, http_code: str) -> List[str]:
         return [http_code[0] + 'XX']
+
+class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
+    def __init__(self,
+            log_file: Path = Path('data/logs_aggregated_concurrent.csv'),
+            relevant_columns: List[str] = ['Hostname', 'log_level', 'programname', 'python_module', 'http_status', 'http_method'],
+            min_causality: float = 0.0):
+        self.log_file = log_file
+        self.relevant_columns = relevant_columns
+        self.min_causality = min_causality
+
+    def load_data(self) -> pd.DataFrame:
+        df = pd.read_csv(self.log_file).fillna('')
+        rel_df = df[self.relevant_columns]
+        counted_causality = self._generate_counted_causality(rel_df)
+        causality_df = pd.DataFrame(columns=['parent', 'child'])
+
+        for from_value, to_values in tqdm(counted_causality.items(), desc='Generating causality df from counted causality'):
+            total_to_counts = len(to_values)
+            to_values_counter: Dict[str, int] = Counter(to_values)
+            for to_value, to_count in to_values_counter.items():
+                if to_count / total_to_counts > self.min_causality:
+                    causality_df = causality_df.append({
+                        'parent': from_value,
+                        'child': to_value,
+                    }, ignore_index=True)
+
+        return causality_df[['parent', 'child']]
+
+    def _generate_counted_causality(self, df: pd.DataFrame) -> Dict[str, List[str]]:
+        causality: Dict[str, List[str]] = {}
+        previous_row = None
+        for _, row in tqdm(df.iterrows(), desc='Generating counted causality for Huawei log data', total=len(df)):
+            if previous_row is None:
+                previous_row = row
+                continue
+            for previous_column in self.relevant_columns:
+                previous_column_value = str(previous_row[previous_column]).lower()
+                if len(previous_column_value) < 1:
+                    continue
+                if previous_column_value not in causality:
+                    causality[previous_column_value] = []
+                for current_column in self.relevant_columns:
+                    current_column_value = str(row[current_column]).lower()
+                    if len(current_column_value) < 1:
+                        continue
+                    if current_column_value not in causality[previous_column_value]:
+                        causality[previous_column_value].append(current_column_value)
+                    else:
+                        causality[previous_column_value].append(current_column_value)
+            previous_row = row
+        return causality
 
