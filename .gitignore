@@ -307,3 +307,5 @@ plots/**
 
 # Tensorflow output
 *.tsv
+# pyvis output
+*.html

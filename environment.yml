@@ -12,3 +12,4 @@ dependencies:
   - pip:
     - dc-cli
     - fasttext
+    - pyvis
