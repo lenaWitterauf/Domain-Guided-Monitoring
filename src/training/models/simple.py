@@ -4,14 +4,15 @@ import pandas as pd
 from typing import Dict
 import logging
 from .base import BaseModel, BaseEmbedding
+from .config import ModelConfig
 
 class SimpleEmbedding(tf.keras.Model, BaseEmbedding):
 
     def __init__(self, 
-            vocab: Dict[str, int],
-            embedding_size: int = 16):
+            vocab: Dict[str, int], config: ModelConfig):
         super(SimpleEmbedding, self).__init__()
-        self.embedding_size = embedding_size
+        self.config = config
+
         self.num_features = len(vocab)
         self.num_hidden_features = 0
 
@@ -20,10 +21,10 @@ class SimpleEmbedding(tf.keras.Model, BaseEmbedding):
     def _init_basic_embedding_variables(self, vocab: Dict[str, int]):
         logging.info('Initializing SIMPLE basic embedding variables')
         self.basic_feature_embeddings = self.add_weight(
-            initializer=tf.keras.initializers.GlorotNormal(),
-            trainable=True,
+            initializer=self._get_feature_initializer(vocab),
+            trainable=self.config.base_feature_embeddings_trainable,
             name='simple_embedding/basic_feature_embeddings',
-            shape=(self.num_features,self.embedding_size),
+            shape=(self.num_features,self.config.embedding_dim),
         )
         self.basic_hidden_embeddings = None
 
@@ -34,5 +35,5 @@ class SimpleEmbedding(tf.keras.Model, BaseEmbedding):
 
 class SimpleModel(BaseModel):
     def _get_embedding_layer(self, metadata: SequenceMetadata, vocab: Dict[str, int]) -> tf.keras.Model:
-        return SimpleEmbedding(vocab)
+        return SimpleEmbedding(vocab, self.config)
 

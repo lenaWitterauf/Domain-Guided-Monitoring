@@ -8,6 +8,7 @@ class CausalityKnowledge:
     nodes: Dict[int, Node]
     vocab: Dict[str, int]
     extended_vocab: Dict[str, int]
+    extra_vocab: Dict[str, int]
     child_col_name: str
     parent_col_name: str
 
@@ -68,6 +69,8 @@ class CausalityKnowledge:
         if max_index == max(vocab.values()):
             logging.debug('Adding VOID node to ensure extended vocab > vocab')
             self.extended_vocab['_VOID_'] = max_index + 1
+
+        self.extra_vocab = {k:v for k,v in self.extended_vocab.items() if k not in self.vocab}
 
     def __str__(self):
         all_strings = []

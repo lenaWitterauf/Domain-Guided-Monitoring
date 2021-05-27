@@ -121,7 +121,7 @@ class EmbeddingHelper:
         relevant_words = {}
         for word, idx in description_knowledge.vocab.items():
             relevant_words[word] = [
-                (word, description_knowledge.words_vocab[word] - len(description_knowledge.vocab)) 
+                (word, description_knowledge.extended_vocab[word]) 
                 for word in description_knowledge.descriptions_set[idx]
             ]
 

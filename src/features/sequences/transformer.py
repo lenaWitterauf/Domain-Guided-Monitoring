@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-from typing import Dict, Generator, Tuple, List
+from typing import Dict, Tuple, List
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from .config import SequenceConfig

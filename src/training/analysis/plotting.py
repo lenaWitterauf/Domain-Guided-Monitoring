@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from .base import BaseModel
+from ..models import BaseModel
 
 class MetricPlotter:
     def __init__(self, model: BaseModel, plot_path: str = 'plots/'):

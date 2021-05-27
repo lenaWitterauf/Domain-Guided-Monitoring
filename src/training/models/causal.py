@@ -2,50 +2,49 @@ from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
 import logging
 from tqdm import tqdm
-from src.features.knowledge import HierarchyKnowledge
+from src.features.knowledge import CausalityKnowledge
 from .base import BaseModel, BaseEmbedding
+from .config import ModelConfig
 
-class GramEmbedding(tf.keras.Model, BaseEmbedding):
+class CausalityEmbedding(tf.keras.Model, BaseEmbedding):
 
-    def __init__(self, 
-            hierarchy: HierarchyKnowledge, 
-            embedding_size: int = 16, 
-            hidden_size: int = 16):
-        super(GramEmbedding, self).__init__()
-        self.embedding_size = embedding_size
-        self.num_features = len(hierarchy.vocab)
-        self.num_hidden_features = len(hierarchy.extended_vocab) - len(hierarchy.vocab)
+    def __init__(self, causality: CausalityKnowledge, config: ModelConfig):
+        super(CausalityEmbedding, self).__init__()
+        self.config = config
 
-        self.w = tf.keras.layers.Dense(hidden_size, use_bias=True, activation='tanh')
+        self.num_features = len(causality.vocab)
+        self.num_hidden_features = len(causality.extended_vocab) - len(causality.vocab)
+
+        self.w = tf.keras.layers.Dense(self.config.attention_dim, use_bias=True, activation='tanh')
         self.u = tf.keras.layers.Dense(1, use_bias=False)
 
-        self._init_basic_embedding_variables()
-        self._init_embedding_mask(hierarchy)
+        self._init_basic_embedding_variables(causality)
+        self._init_embedding_mask(causality)
 
-    def _init_basic_embedding_variables(self):
-        logging.info('Initializing GRAM basic embedding variables')
+    def _init_basic_embedding_variables(self, causality: CausalityKnowledge):
+        logging.info('Initializing CAUSALITY basic embedding variables')
         self.basic_feature_embeddings = self.add_weight(
-            initializer=tf.keras.initializers.GlorotNormal(),
-            trainable=True,
-            name='gram_embedding/basic_feature_embeddings',
-            shape=(self.num_features,self.embedding_size),
+            initializer=self._get_feature_initializer(causality.vocab),
+            trainable=self.config.base_feature_embeddings_trainable,
+            name='causality_embedding/basic_feature_embeddings',
+            shape=(self.num_features,self.config.embedding_dim),
         )
         self.basic_hidden_embeddings = self.add_weight(
-            initializer=tf.keras.initializers.GlorotNormal(),
-            trainable=True,
-            name='gram_embedding/basic_hidden_embeddings',
-            shape=(self.num_hidden_features,self.embedding_size),
+            initializer=self._get_hidden_initializer(causality.extra_vocab),
+            trainable=self.config.base_hidden_embeddings_trainable,
+            name='causality_embedding/basic_hidden_embeddings',
+            shape=(self.num_hidden_features,self.config.embedding_dim),
         )
 
-    def _init_embedding_mask(self, hierarchy: HierarchyKnowledge): 
-        logging.info('Initializing GRAM ancestor information')
+    def _init_embedding_mask(self, causality: CausalityKnowledge): 
+        logging.info('Initializing CAUSALITY information')
         embedding_masks = {}
-        for idx, node in tqdm(hierarchy.nodes.items(), desc='Initializing GRAM ancestor information'):
+        for idx, node in tqdm(causality.nodes.items(), desc='Initializing CAUSALITY information'):
             if node.label_idx >= self.num_features: continue
 
-            ancestor_idxs = set(node.get_ancestor_label_idxs() + [idx])
+            neighbour_idxs = set(node.get_neighbour_label_idxs() + [idx])
             embedding_masks[idx] = [
-                (x in ancestor_idxs)
+                (x in neighbour_idxs)
                 for x in range(self.num_features + self.num_hidden_features)
             ]
 
@@ -55,7 +54,7 @@ class GramEmbedding(tf.keras.Model, BaseEmbedding):
         ]
         self.embedding_mask = tf.Variable(tf.expand_dims(
             tf.concat([all_embedding_masks], axis=1),
-            2
+            axis=2
         ), trainable=False)
 
     def _load_full_embedding_matrix(self):
@@ -107,6 +106,6 @@ class GramEmbedding(tf.keras.Model, BaseEmbedding):
         return tf.linalg.matmul(values, embedding_matrix) # shape: (dataset_size, max_sequence_length, embedding_size)
 
 
-class GramModel(BaseModel):
-    def _get_embedding_layer(self, metadata: SequenceMetadata, knowledge: HierarchyKnowledge) -> tf.keras.Model:
-        return GramEmbedding(knowledge)
+class CausalityModel(BaseModel):
+    def _get_embedding_layer(self, metadata: SequenceMetadata, knowledge: CausalityKnowledge) -> tf.keras.Model:
+        return CausalityEmbedding(knowledge, self.config)

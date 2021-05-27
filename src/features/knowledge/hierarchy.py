@@ -8,6 +8,7 @@ class HierarchyKnowledge:
     nodes: Dict[int, Node]
     vocab: Dict[str, int]
     extended_vocab: Dict[str, int]
+    extra_vocab: Dict[str, int]
     child_col_name: str
     parent_col_name: str
 
@@ -27,8 +28,9 @@ class HierarchyKnowledge:
             child_node = self.nodes[self.extended_vocab[row[self.child_col_name]]]
             parent_node = self.nodes[self.extended_vocab[row[self.parent_col_name]]]
 
-            child_node.in_nodes.add(parent_node)
-            parent_node.out_nodes.add(child_node)
+            if child_node is not parent_node:
+                child_node.in_nodes.add(parent_node)
+                parent_node.out_nodes.add(child_node)
         
         logging.info('Built hierarchy with %d nodes', len(self.nodes))
 
@@ -56,6 +58,8 @@ class HierarchyKnowledge:
             parents_df = hierarchy_df[hierarchy_df[self.child_col_name] == label]
             parents = list(set(parents_df[self.parent_col_name]))
             labels_to_handle = labels_to_handle + parents
+
+        self.extra_vocab = {k:v for k,v in self.extended_vocab.items() if k not in self.vocab}
 
     def __str__(self):
         roots = [node for node in self.nodes.values() if node.is_root()]

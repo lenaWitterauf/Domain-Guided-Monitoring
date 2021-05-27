@@ -82,4 +82,4 @@ class DescriptionPaperEmbedding(tf.keras.Model):
 
 class DescriptionPaperModel(BaseModel):
     def _get_embedding_layer(self, metadata: SequenceMetadata, knowledge: DescriptionKnowledge) -> tf.keras.Model:
-        return DescriptionPaperEmbedding(knowledge)
+        return DescriptionPaperEmbedding(knowledge, embedding_size=self.config.embedding_dim)

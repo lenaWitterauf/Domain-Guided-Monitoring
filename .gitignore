@@ -297,9 +297,12 @@ tags
 data/**
 !data/.gitkeep
 
-# Plotting directory
-plots/**
-!plots/.gitkeep
+# Artifact directory
+artifacts/**
+!artifacts/.gitkeep
+
+# MlFlow
+mlruns/**
 
 # Fasttext models
 *.bin
@@ -308,4 +311,4 @@ plots/**
 # Tensorflow output
 *.tsv
 # pyvis output
-*.html
+notebooks/*.html

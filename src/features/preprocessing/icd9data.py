@@ -23,7 +23,7 @@ class ICD9DataPreprocessor(Preprocessor):
             time.sleep(timeout_s)
             return self._open_url(url)
         except urllib.error.HTTPError as error:
-            logging.error('Error trying to query URL', url, error)
+            logging.error('Error trying to query URL %s: %s', url, error)
             if max_retries < 0:
                 raise error
             else:
@@ -31,12 +31,12 @@ class ICD9DataPreprocessor(Preprocessor):
                 return self._open_url_gentle(url, max_retries-1, timeout_s, error_timeout_s)
 
     def _query_leaf_hierarchy_from(self, parent_url, parent_name, parent_code):
-        logging.debug('Querying ICD9 data from', parent_url)
+        logging.debug('Querying ICD9 data from %s', parent_url)
         soup = self._open_url_gentle(parent_url)
 
         hierarchy_df = pd.DataFrame(columns=['parent_url', 'parent_name', 'parent_code', 'child_url', 'child_name', 'child_code'])
         definition_list = soup.find_all(class_='codeHierarchyUL')[0]
-        for list_item in tqdm(definition_list.find_all('li'), desc='Parsing child codes from code ' + str(parent_code)):
+        for list_item in definition_list.find_all('li'):
             child_url = self.icd9data_base_url + list_item.a['href']
             child_name = list_item.find_all(class_='threeDigitCodeListDescription')[0].get_text()
             child_code = list_item.a.get_text()
@@ -51,7 +51,7 @@ class ICD9DataPreprocessor(Preprocessor):
         return hierarchy_df
 
     def _query_hierarchy_from(self, parent_url, parent_name, parent_code) -> pd.DataFrame:
-        logging.debug('Querying ICD9 data from', parent_url)
+        logging.debug('Querying ICD9 data from %s', parent_url)
         soup = self._open_url_gentle(parent_url)
 
         hierarchy_df = pd.DataFrame(columns=['parent_url', 'parent_name', 'parent_code', 'child_url', 'child_name', 'child_code'])

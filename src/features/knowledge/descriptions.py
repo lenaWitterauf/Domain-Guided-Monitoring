@@ -6,6 +6,7 @@ from typing import Dict, Set, List
 
 class DescriptionKnowledge:
     vocab: Dict[str, int]
+    extended_vocab: Dict[str, int]
     descriptions: Dict[int, List[str]]
     descriptions_set: Dict[int, Set[str]]
     words: Set[str]
@@ -14,6 +15,7 @@ class DescriptionKnowledge:
 
     def build_knowledge_from_df(self, description_df: pd.DataFrame, vocab: Dict[str, int]):
         self.vocab = vocab
+        self.extended_vocab = dict()
         self.words = set()
         self.words_vocab = {}
         self.descriptions = {}
@@ -39,11 +41,14 @@ class DescriptionKnowledge:
             self.descriptions_set[vocab[label]] = set(description_words)
 
         for label, idx in vocab.items():
+            self.extended_vocab[label] = idx
             if idx not in self.descriptions:
                 # TODO: find alternative knowledge bases in addition to MIMIC file - eg icd9data.com
                 logging.error('Failed to load description for label %s!', label)  
                 self.descriptions[idx] = []    
                 self.descriptions_set[idx] = set()
+            self.descriptions_set[idx].add(label)
 
         for word in self.words:
             self.words_vocab[word] = len(self.words_vocab)  + len(self.vocab)
+            self.extended_vocab[word] = self.words_vocab[word]
