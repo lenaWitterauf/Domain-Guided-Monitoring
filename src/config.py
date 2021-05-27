@@ -16,3 +16,4 @@ class ExperimentConfig:
     dataset_generator_cache_file: str = ''
     dataset_shuffle_buffer: int = 1000
     dataset_shuffle_seed: int = 12345
+    tensorflow_seed: int = 7796

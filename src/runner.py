@@ -20,6 +20,7 @@ class ExperimentRunner:
 
     def run(self):
         logging.info('Starting run %s', self.run_id)
+        tf.random.set_seed(self.config.tensorflow_seed)
         sequence_df = self._load_sequences()
         if self.config.max_data_size > 0 and self.config.max_data_size < len(sequence_df):
             logging.info('Only using first %d rows of sequence_df', self.config.max_data_size)
