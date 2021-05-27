@@ -1,4 +1,4 @@
 """Code to preprocess datasets."""
-from .mimic import MimicPreprocessor, MimicPreprocessorConfig, HierarchyPreprocessor, ICDDescriptionPreprocessor
+from .mimic import MimicPreprocessor, MimicPreprocessorConfig, CCSHierarchyPreprocessor, ICD9HierarchyPreprocessor, ICD9DescriptionPreprocessor
 from .huawei import ConcurrentAggregatedLogsPreprocessor, HuaweiPreprocessorConfig, ConcurrentAggregatedLogsDescriptionPreprocessor, ConcurrentAggregatedLogsHierarchyPreprocessor, ConcurrentAggregatedLogsCausalityPreprocessor
 from .base import Preprocessor

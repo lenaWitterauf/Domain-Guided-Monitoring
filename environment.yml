@@ -13,3 +13,4 @@ dependencies:
     - dc-cli
     - fasttext
     - pyvis
+    - beautifulsoup4

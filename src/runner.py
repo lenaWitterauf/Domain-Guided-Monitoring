@@ -125,7 +125,7 @@ class ExperimentRunner:
     def _load_description_knowledge(self, metadata: sequences.SequenceMetadata) -> knowledge.DescriptionKnowledge:
         description_preprocessor: preprocessing.Preprocessor
         if self.sequence_type == 'mimic':
-            description_preprocessor = preprocessing.ICDDescriptionPreprocessor()
+            description_preprocessor = preprocessing.ICD9DescriptionPreprocessor()
             description_df = description_preprocessor.load_data()
             description_knowledge = knowledge.DescriptionKnowledge()
             description_knowledge.build_knowledge_from_df(description_df, metadata.x_vocab)
@@ -155,7 +155,7 @@ class ExperimentRunner:
     def _load_hierarchy_knowledge(self, metadata: sequences.SequenceMetadata) -> knowledge.HierarchyKnowledge:
         hierarchy_preprocessor: preprocessing.Preprocessor
         if self.sequence_type == 'mimic':
-            hierarchy_preprocessor = preprocessing.HierarchyPreprocessor()
+            hierarchy_preprocessor = preprocessing.ICD9HierarchyPreprocessor()
             hierarchy_df = hierarchy_preprocessor.load_data()
             hierarchy = knowledge.HierarchyKnowledge()
             hierarchy.build_hierarchy_from_df(hierarchy_df, metadata.x_vocab)

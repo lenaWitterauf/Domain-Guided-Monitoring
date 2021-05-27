@@ -5,6 +5,7 @@ import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
 from .base import Preprocessor
+from .icd9data import ICD9DataPreprocessor
 
 def _convert_to_icd9(dxStr: str):
     if dxStr.startswith('E'):
@@ -28,10 +29,35 @@ class MimicPreprocessorConfig:
     admission_file: Path = Path('data/ADMISSIONS.csv')
     diagnosis_file: Path = Path('data/DIAGNOSES_ICD.csv')
     hierarchy_file: Path = Path('data/ccs_multi_dx_tool_2015.csv')
+    icd9_file: Path = Path('data/icd9.csv')
+    use_icd9_data: bool = True
     min_admissions_per_user: int = 2
     sequence_column_name: str = 'icd9_code_converted' #'icd9_code_converted_3digits'
 
-class HierarchyPreprocessor(Preprocessor):
+class ICD9HierarchyPreprocessor(Preprocessor):
+    def __init__(self, icd9_file=Path('data/icd9.csv')):
+        self.icd9_file = icd9_file
+
+    def load_data(self) -> pd.DataFrame:
+        logging.info('Starting to preprocess ICD9 hierarchy')
+        hierarchy_df = self._read_hierarchy_df()
+        return self._transform_hierarchy_df(hierarchy_df)
+
+    def _read_hierarchy_df(self) -> pd.DataFrame:
+        logging.info('Reading hierarchy_df from %s', self.icd9_file)
+        if not self.icd9_file.is_file():
+            preprocessor = ICD9DataPreprocessor()
+            hierarchy_df = preprocessor.load_data()
+            hierarchy_df.to_csv(self.icd9_file)
+    
+        return pd.read_csv(self.icd9_file, dtype=str)
+
+    def _transform_hierarchy_df(self, hierarchy_df: pd.DataFrame):
+        hierarchy_df['parent'] = hierarchy_df['parent_code']
+        hierarchy_df['child'] = hierarchy_df['child_code']
+        return hierarchy_df[['parent', 'child']]
+
+class CCSHierarchyPreprocessor(Preprocessor):
     hierarchy_file: Path
 
     def __init__(self,
@@ -39,7 +65,7 @@ class HierarchyPreprocessor(Preprocessor):
         self.hierarchy_file = hierarchy_file
 
     def load_data(self) -> pd.DataFrame:
-        logging.info('Starting to preprocess ICD9 hierarchy')
+        logging.info('Starting to preprocess CCS hierarchy')
         hierarchy_df = self._read_hierarchy_df()
         return self._transform_hierarchy_df(hierarchy_df)
 
@@ -67,17 +93,25 @@ class HierarchyPreprocessor(Preprocessor):
         
         return transformed_hierarchy_df
 
-class ICDDescriptionPreprocessor(Preprocessor):
-    description_file: Path
+class ICD9DescriptionPreprocessor(Preprocessor):
+    def __init__(self, icd9_file=Path('data/icd9.csv')):
+        self.icd9_file = icd9_file
 
-    def __init__(self, description_file=Path('data/D_ICD_DIAGNOSES.csv')):
-        self.description_file = description_file
-
-    def load_data(self):
-        description_df = pd.read_csv(self.description_file)
-        description_df['label'] = description_df['icd9_code'].apply(_convert_to_icd9)
-        description_df['description'] = description_df['long_title'].apply(lambda x: x.replace('\"', ''))
+    def load_data(self) -> pd.DataFrame:
+        logging.info('Starting to preprocess ICD9 descriptions')
+        description_df = self._read_description_df()
+        description_df['label'] = description_df['child_code']
+        description_df['description'] = description_df['child_name'].apply(lambda x: x.replace('\"', ''))
         return description_df[['label', 'description']]
+
+    def _read_description_df(self) -> pd.DataFrame:
+        logging.info('Reading description_df from %s', self.icd9_file)
+        if not self.icd9_file.is_file():
+            preprocessor = ICD9DataPreprocessor()
+            description_df = preprocessor.load_data()
+            description_df.to_csv(self.icd9_file)
+    
+        return pd.read_csv(self.icd9_file, dtype=str)
 
 
 class MimicPreprocessor(Preprocessor):
