@@ -32,7 +32,7 @@ class MimicPreprocessorConfig:
     icd9_file: Path = Path('data/icd9.csv')
     use_icd9_data: bool = True
     min_admissions_per_user: int = 2
-    sequence_column_name: str = 'icd9_code_converted' #'icd9_code_converted_3digits'
+    sequence_column_name: str = 'icd9_code_converted_3digits'
 
 class ICD9HierarchyPreprocessor(Preprocessor):
     def __init__(self, icd9_file=Path('data/icd9.csv')):
@@ -137,6 +137,7 @@ class MimicPreprocessor(Preprocessor):
     def _read_admission_df(self) -> pd.DataFrame:
         logging.info('Reading admission_df from %s', self.admission_file)
         admission_df = pd.read_csv(self.admission_file)
+        admission_df.columns = [x.lower() for x in admission_df.columns]
         admission_df['admittime']= pd.to_datetime(admission_df['admittime'])
         admission_df['dischtime']= pd.to_datetime(admission_df['dischtime'])
         admission_df['deathtime']= pd.to_datetime(admission_df['deathtime'])
@@ -147,6 +148,8 @@ class MimicPreprocessor(Preprocessor):
     def _read_diagnosis_df(self) -> pd.DataFrame:
         logging.info('Reading diagnosis_df from %s', self.diagnosis_file)
         diagnosis_df = pd.read_csv(self.diagnosis_file)
+        diagnosis_df.columns = [x.lower() for x in diagnosis_df.columns]
+
         diagnosis_df['icd9_code'] = diagnosis_df['icd9_code'].apply(str)
         diagnosis_df['icd9_code_converted'] = diagnosis_df['icd9_code'].apply(_convert_to_icd9)
         diagnosis_df['icd9_code_converted_3digits'] = diagnosis_df['icd9_code'].apply(_convert_to_3digit_icd9)

@@ -7,7 +7,6 @@ dependencies:
   - matplotlib
   - seaborn
   - tqdm
-  - tensorflow>=v2.4.1
   - pip
   - pip:
     - dc-cli
@@ -15,3 +14,4 @@ dependencies:
     - pyvis
     - beautifulsoup4
     - mlflow
+    - tensorflow==v2.2
