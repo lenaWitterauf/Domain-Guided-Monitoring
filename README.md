@@ -40,6 +40,7 @@ In order to run this code, you need Anaconda + Python >= 3.8. This repository co
   -  `--experimentconfig_sequence_type`: dataset to use, for now valid values here are `mimic` and `huawei_logs`
   -  `--experimentconfig_model_type`: use this to choose the knowledge model you want to run; valid values are `simple`, `gram`, `text` and `causal`
   -  to see the full list of options run `python main.py -h`
+- **Visualize Results**: Metrics, artefacts and parameters of an experiment run are logged in MLFlow. You can use the mlflow UI to get a good overview over the experiment results. Execute `make ui` to start mlflow UI on port 5000.
 
 ### Run manual SetUp
 - **Create and activate conda environment**: run `conda env update -f environment.yml` to create (or update) an anaconda environment from the given `environment.yml` file. Activate the environment by running `conda activate healthcare-aiops`
@@ -50,3 +51,4 @@ In order to run this code, you need Anaconda + Python >= 3.8. This repository co
   -  `--experimentconfig_sequence_type`: dataset to use, for now valid values here are `mimic` and `huawei_logs`
   -  `--experimentconfig_model_type`: use this to choose the knowledge model you want to run; valid values are `simple`, `gram`, `text` and `causal`
   -  to see the full list of options run `python main.py -h`
+- **Visualize Results**: Metrics, artefacts and parameters of an experiment run are logged in MLFlow. You can use the mlflow UI to get a good overview over the experiment results. Execute `mlflow ui` to start mlflow UI on port 5000.

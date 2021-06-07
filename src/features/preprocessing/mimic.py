@@ -115,10 +115,6 @@ class ICD9DescriptionPreprocessor(Preprocessor):
 
 
 class MimicPreprocessor(Preprocessor):
-    admission_file: Path
-    diagnosis_file: Path 
-    min_admissions_per_user: int
-
     def __init__(self, 
             admission_file=Path('data/ADMISSIONS.csv'), 
             diagnosis_file=Path('data/DIAGNOSES_ICD.csv'), 

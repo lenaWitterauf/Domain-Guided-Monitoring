@@ -14,7 +14,7 @@ class FastTextInitializer:
         fasttext.util.download_model('en', if_exists='ignore')
         model = fasttext.load_model('cc.en.300.bin')
         if model.get_dimension() > self.embedding_dim:
-            logging.info('Reducing dimension of FastText word model from %d to %d', model.get_dimension(), self.config.embedding_dim)
+            logging.info('Reducing dimension of FastText word model from %d to %d', model.get_dimension(), self.embedding_dim)
             fasttext.util.reduce_model(model, self.embedding_dim)
 
         return model
@@ -23,12 +23,11 @@ class FastTextInitializer:
         word_model = self._load_fasttext_model()
         word_embeddings = {}
         for name, idx in tqdm(word_vocab.items(), desc='Initializing word embeddings from model'):
-            word_tensor = tf.expand_dims(
-                tf.convert_to_tensor(word_model.get_word_vector(name)),
-                axis=0,
-            )
-            word_embeddings[idx] = tf.Variable(
-                initial_value=word_tensor,
+            word_embeddings[idx] = tf.constant(
+                tf.expand_dims(
+                    tf.convert_to_tensor(word_model.get_word_vector(name)),
+                    axis=0,
+                ),
                 shape=(1,self.embedding_dim),
             )
         return word_embeddings
