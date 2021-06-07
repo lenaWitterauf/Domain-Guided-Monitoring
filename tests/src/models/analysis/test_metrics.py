@@ -1,8 +1,7 @@
 import unittest
-import tensorflow as tf
 import numpy as np
 
-from src.models.analysis import metrics 
+from src.training.models import metrics 
 
 class TestMulticlassMetrics(unittest.TestCase):
     def test_base_metric(self):

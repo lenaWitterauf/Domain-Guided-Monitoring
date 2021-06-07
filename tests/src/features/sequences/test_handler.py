@@ -3,7 +3,7 @@ import pandas as pd
 import tensorflow as tf
 from typing import Dict
 
-from src.features.sequences.transformer import NextSequenceTransformer, SplittedSequence
+from src.features.sequences.transformer import NextSequenceTransformer, TrainTestSplit
 from ...test_utils import transform_to_string
 
 class TestHandler(unittest.TestCase):
@@ -12,24 +12,26 @@ class TestHandler(unittest.TestCase):
         fixture = NextSequenceTransformer(flatten_x=True)
         split = fixture.transform_train_test_split(sequence_df, 'sequence')
 
-        self._check_vocab(split.x_vocab)
-        self._check_vocab(split.y_vocab)
+        self._check_vocab(split.metadata.x_vocab)
+        self._check_vocab(split.metadata.y_vocab)
         self._check_split_sizes(split)
         self._check_tensors(split)
         self._check_tensor_contents(split)
 
-    def _check_tensors(self, split: SplittedSequence):
+    def _check_tensors(self, split: TrainTestSplit):
         combined_x = tf.concat([split.train_x, split.test_x], axis=0)
         combined_y = tf.concat([split.train_y, split.test_y], axis=0)
+        combined_y = tf.expand_dims(combined_y, axis=1)
 
         self.assertEquals(combined_x.shape[0], combined_y.shape[0], 3) # number of datapoints
         self.assertEquals(combined_x.shape[2], combined_y.shape[2], 4) # number of features
         self.assertEquals(combined_x.shape[1], 2) # max sequence length - 1
-        self.assertEquals(combined_y.shape[1], 1) # y dim predicts only first next visit
 
-    def _check_tensor_contents(self, split: SplittedSequence):
+    def _check_tensor_contents(self, split: TrainTestSplit):
         combined_x = tf.concat([split.train_x, split.test_x], axis=0)
         combined_y = tf.concat([split.train_y, split.test_y], axis=0)
+        combined_y = tf.expand_dims(combined_y, axis=1)
+
         expected_data = self._load_expected_data()
         actual_data = pd.DataFrame(data={
             'x': self._load_data_from_tensor(combined_x, split),
@@ -50,7 +52,7 @@ class TestHandler(unittest.TestCase):
         )
         
         
-    def _load_data_from_tensor(self, tensor: tf.Tensor, split: SplittedSequence):
+    def _load_data_from_tensor(self, tensor: tf.Tensor, split: TrainTestSplit):
         data = []
         for data_idx in range(tensor.shape[0]):
             visits = []
@@ -58,14 +60,14 @@ class TestHandler(unittest.TestCase):
                 visit_data = []
                 for multi_idx in range(tensor.shape[2]):
                     if tensor[data_idx, visit_idx, multi_idx] == 1:
-                        visit_data.append([name for name in split.x_vocab.keys() if split.x_vocab[name] == multi_idx][0])
+                        visit_data.append([name for name in split.metadata.x_vocab.keys() if split.metadata.x_vocab[name] == multi_idx][0])
                 visits.append(visit_data)
             data.append(visits)
 
         return data
 
 
-    def _check_split_sizes(self, split: SplittedSequence):
+    def _check_split_sizes(self, split: TrainTestSplit):
         self.assertEquals(len(split.train_x), len(split.train_y))
         self.assertEquals(len(split.test_x), len(split.test_y))
         self.assertEquals(

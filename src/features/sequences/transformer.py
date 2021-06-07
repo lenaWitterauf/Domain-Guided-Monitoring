@@ -18,7 +18,7 @@ class SequenceMetadata:
 
 class TrainTestSplit:
     def __init__(self, train_x, test_x, train_y, test_y, metadata):
-        self.train_x: tf.Tensor     = train_x
+        self.train_x: tf.Tensor = train_x
         self.test_x: tf.Tensor = test_x
         self.train_y: tf.Tensor = train_y
         self.test_y: tf.Tensor = test_y
