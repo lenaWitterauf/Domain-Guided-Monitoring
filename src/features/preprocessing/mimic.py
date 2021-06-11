@@ -4,6 +4,7 @@ import logging
 import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
+from typing import List, Tuple
 from .base import Preprocessor
 from .icd9data import ICD9DataPreprocessor
 
@@ -44,22 +45,14 @@ class ICD9HierarchyPreprocessor(Preprocessor):
         return self._transform_hierarchy_df(hierarchy_df)
 
     def _read_hierarchy_df(self) -> pd.DataFrame:
-        logging.info('Reading hierarchy_df from %s', self.icd9_file)
-        if not self.icd9_file.is_file():
-            preprocessor = ICD9DataPreprocessor()
-            hierarchy_df = preprocessor.load_data()
-            hierarchy_df.to_csv(self.icd9_file)
-    
-        return pd.read_csv(self.icd9_file, dtype=str)
+        return ICD9DataPreprocessor(self.icd9_file).load_data()
 
     def _transform_hierarchy_df(self, hierarchy_df: pd.DataFrame):
-        hierarchy_df['parent'] = hierarchy_df['parent_code']
-        hierarchy_df['child'] = hierarchy_df['child_code']
-        return hierarchy_df[['parent', 'child']]
+        hierarchy_df['parent_id'] = hierarchy_df['parent_code']
+        hierarchy_df['child_id'] = hierarchy_df['child_code']
+        return hierarchy_df[['parent_id', 'child_id', 'parent_name', 'child_name']]
 
 class CCSHierarchyPreprocessor(Preprocessor):
-    hierarchy_file: Path
-
     def __init__(self,
             hierarchy_file=Path('data/ccs_multi_dx_tool_2015.csv')):
         self.hierarchy_file = hierarchy_file
@@ -74,21 +67,29 @@ class CCSHierarchyPreprocessor(Preprocessor):
         return pd.read_csv(self.hierarchy_file, quotechar='\'', dtype=str)
 
     def _transform_hierarchy_df(self, hierarchy_df: pd.DataFrame):
-        transformed_hierarchy_df = pd.DataFrame(columns=['parent', 'child'])
+        transformed_hierarchy_df = pd.DataFrame(columns=['parent_id', 'child_id', 'parent_name', 'child_name'])
         for _, row in tqdm(hierarchy_df.iterrows(), desc='Building flat hierarchy df', total=len(transformed_hierarchy_df)):
-            all_parents = [
+            all_parents: List[Tuple[str, str]] = list(zip([
                     row['CCS LVL 1'],
                     row['CCS LVL 2'],
                     row['CCS LVL 3'],
                     row['CCS LVL 4'],
-            ]
-            all_parents = [str(label).strip() for label in all_parents]
-            all_parents = [label for label in all_parents if len(label) > 0]
+            ], [
+                    row['CCS LVL 1 LABEL'],
+                    row['CCS LVL 2 LABEL'],
+                    row['CCS LVL 3 LABEL'],
+                    row['CCS LVL 4 LABEL'],
+            ]))
+            all_parents = [(str(id).strip(), name) for (id, name) in all_parents]
+            all_parents = [(id, name) for (id, name) in all_parents if len(id) > 0]
+
             # Labels are sorted from general -> specific
 
             transformed_hierarchy_df = transformed_hierarchy_df.append(pd.DataFrame(data={
-                'parent': all_parents,
-                'child': all_parents[1:] + [_convert_to_3digit_icd9(row['ICD-9-CM CODE'])]
+                'parent_id': [id for (id, _) in all_parents],
+                'parent_name': [name for (_, name) in all_parents],
+                'child_id': [id for (id, _) in all_parents[1:]] + [_convert_to_3digit_icd9(row['ICD-9-CM CODE'])],
+                'child_name': [name for (_, name) in all_parents[1:]] + [_convert_to_3digit_icd9(row['ICD-9-CM CODE'])],
             }))
         
         return transformed_hierarchy_df
@@ -105,22 +106,18 @@ class ICD9DescriptionPreprocessor(Preprocessor):
         return description_df[['label', 'description']]
 
     def _read_description_df(self) -> pd.DataFrame:
-        logging.info('Reading description_df from %s', self.icd9_file)
-        if not self.icd9_file.is_file():
-            preprocessor = ICD9DataPreprocessor()
-            description_df = preprocessor.load_data()
-            description_df.to_csv(self.icd9_file)
-    
-        return pd.read_csv(self.icd9_file, dtype=str)
+        return ICD9DataPreprocessor(self.icd9_file).load_data()
 
 
 class MimicPreprocessor(Preprocessor):
     def __init__(self, 
             admission_file=Path('data/ADMISSIONS.csv'), 
-            diagnosis_file=Path('data/DIAGNOSES_ICD.csv'), 
+            diagnosis_file=Path('data/DIAGNOSES_ICD.csv'),
+            icd9_file=Path('data/icd9.csv'),
             min_admissions_per_user=2):
         self.admission_file = admission_file
         self.diagnosis_file = diagnosis_file
+        self.icd9_file = icd9_file
         self.min_admissions_per_user = min_admissions_per_user
 
     def load_data(self) -> pd.DataFrame:
@@ -149,6 +146,11 @@ class MimicPreprocessor(Preprocessor):
         diagnosis_df['icd9_code'] = diagnosis_df['icd9_code'].apply(str)
         diagnosis_df['icd9_code_converted'] = diagnosis_df['icd9_code'].apply(_convert_to_icd9)
         diagnosis_df['icd9_code_converted_3digits'] = diagnosis_df['icd9_code'].apply(_convert_to_3digit_icd9)
+
+        icd9_df = ICD9DataPreprocessor(self.icd9_file).load_data()[['child_code', 'child_name']].drop_duplicates()
+        diagnosis_df['icd9_code_name'] = pd.merge(diagnosis_df, icd9_df, how='left', left_on='icd9_code_converted', right_on='child_code')['child_name'].fillna(diagnosis_df['icd9_code_converted'])
+        diagnosis_df['icd9_code_name_3digits'] = pd.merge(diagnosis_df, icd9_df, how='left', left_on='icd9_code_converted_3digits', right_on='child_code')['child_name'].fillna(diagnosis_df['icd9_code_converted_3digits'])
+
         return diagnosis_df
 
     def _aggregate_codes_per_admission(self, diagnosis_df: pd.DataFrame, admission_df: pd.DataFrame) -> pd.DataFrame:

@@ -21,7 +21,9 @@ class SimpleEmbedding(tf.keras.Model, BaseEmbedding):
     def _init_basic_embedding_variables(self, vocab: Dict[str, int]):
         logging.info('Initializing SIMPLE basic embedding variables')
         self.basic_feature_embeddings = self.add_weight(
-            initializer=self._get_feature_initializer(vocab),
+            initializer=self._get_feature_initializer(
+                {idx:name for name,idx in vocab.items()}
+            ),
             trainable=self.config.base_feature_embeddings_trainable,
             name='simple_embedding/basic_feature_embeddings',
             shape=(self.num_features,self.config.embedding_dim),

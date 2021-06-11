@@ -144,11 +144,13 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
         df = pd.read_csv(self.log_file)
         rel_df = df[self.relevant_columns]
 
-        hierarchy_df = pd.DataFrame(columns=['parent', 'child'])
+        hierarchy_df = pd.DataFrame(columns=['parent_id', 'child_id', 'parent_name', 'child_name'])
         for column in self.relevant_columns:
             hierarchy_df = hierarchy_df.append({
-                'parent': 'root',
-                'child': column,
+                'parent_id': 'root',
+                'parent_name': 'root',
+                'child_id': column,
+                'child_name': column,
             }, ignore_index=True)
 
             values = set(rel_df[column].dropna())
@@ -169,17 +171,22 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
                     hierarchy.append('->'.join(hierarchy_elements[0:i]))
                 hierarchy.append(value)
                 
-                parent = column
+                parent_id = column
+                parent_name = column
                 for i in range(len(hierarchy)):
-                    child = hierarchy[i]
-                    if not parent == child: 
+                    child_id = hierarchy[i]
+                    child_name = child_id.split('->')[-1]
+                    if not parent_id == child_id: 
                         hierarchy_df = hierarchy_df.append({
-                            'parent': parent,
-                            'child': child,
+                            'parent_id': parent_id,
+                            'parent_name': parent_name,
+                            'child_id': child_id,
+                            'child_name': child_name,
                         }, ignore_index=True)
-                    parent = child
+                    parent_id = child_id
+                    parent_name = child_name
     
-        return hierarchy_df[['parent', 'child']]
+        return hierarchy_df[['parent_id', 'child_id', 'parent_name', 'child_name']]
 
     def _generate_splitted_hierarchy(self, value: str) -> List[str]:
         hierarchy = []
@@ -209,7 +216,7 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
         df = pd.read_csv(self.log_file).fillna('')
         rel_df = df[self.relevant_columns]
         counted_causality = self._generate_counted_causality(rel_df)
-        causality_df = pd.DataFrame(columns=['parent', 'child'])
+        causality_df = pd.DataFrame(columns=['parent_id', 'child_id', 'parent_name', 'child_name'])
 
         for from_value, to_values in tqdm(counted_causality.items(), desc='Generating causality df from counted causality'):
             total_to_counts = len(to_values)
@@ -217,11 +224,13 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
             for to_value, to_count in to_values_counter.items():
                 if to_count / total_to_counts > self.min_causality:
                     causality_df = causality_df.append({
-                        'parent': from_value,
-                        'child': to_value,
+                        'parent_id': from_value,
+                        'parent_name': from_value.split('->')[1],
+                        'child_id': to_value,
+                        'child_name': to_value.split('->')[1],
                     }, ignore_index=True)
 
-        return causality_df[['parent', 'child']]
+        return causality_df[['parent_id', 'child_id', 'parent_name', 'child_name']]
 
     def _generate_counted_causality(self, df: pd.DataFrame) -> Dict[str, List[str]]:
         causality: Dict[str, List[str]] = {}
@@ -231,13 +240,13 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
                 previous_row = row
                 continue
             for previous_column in self.relevant_columns:
-                previous_column_value = str(previous_row[previous_column]).lower()
+                previous_column_value = str(previous_column) + '->' + str(previous_row[previous_column]).lower()
                 if len(previous_column_value) < 1:
                     continue
                 if previous_column_value not in causality:
                     causality[previous_column_value] = []
                 for current_column in self.relevant_columns:
-                    current_column_value = str(row[current_column]).lower()
+                    current_column_value = str(current_column) + '->' + str(row[current_column]).lower()
                     if len(current_column_value) < 1:
                         continue
                     if current_column_value not in causality[previous_column_value]:

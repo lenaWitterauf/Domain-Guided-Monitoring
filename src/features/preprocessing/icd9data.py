@@ -9,7 +9,18 @@ import time
 class ICD9DataPreprocessor(Preprocessor):
     icd9data_base_url = 'http://www.icd9data.com'
 
+    def __init__(self, icd9_file):
+        self.icd9_file = icd9_file
+
     def load_data(self) -> pd.DataFrame:
+        logging.info('Trying to read icd9_df from %s', self.icd9_file)
+        if not self.icd9_file.is_file():
+            icd9_df = self._query_data()
+            icd9_df.to_csv(self.icd9_file)
+    
+        return pd.read_csv(self.icd9_file, dtype=str)
+
+    def _query_data(self) -> pd.DataFrame:
         logging.info('Starting to query ICD9 data')
         return self._query_hierarchy_from('http://www.icd9data.com/2015/Volume1/default.htm', 'root', '-1')
 

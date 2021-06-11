@@ -5,33 +5,28 @@ import logging
 from .node import Node
 
 class CausalityKnowledge:
-    nodes: Dict[int, Node]
-    vocab: Dict[str, int]
-    extended_vocab: Dict[str, int]
-    extra_vocab: Dict[str, int]
-    child_col_name: str
-    parent_col_name: str
-
-    def __init__(self, child_col_name='child', parent_col_name='parent'):
-        self.child_col_name = child_col_name
-        self.parent_col_name = parent_col_name
+    def __init__(self, child_id_col='child_id', parent_id_col='parent_id', child_name_col='child_name', parent_name_col='parent_name'):
+        self.child_id_col = child_id_col
+        self.parent_id_col = parent_id_col
+        self.child_name_col = child_name_col
+        self.parent_name_col = parent_name_col
 
     def build_causality_from_df(self, causality_df: pd.DataFrame, vocab: Dict[str, int]):
-        self.vocab = vocab
+        self.vocab: Dict[str, int] = vocab
         self._build_extended_vocab(causality_df, vocab)
         for _,row in tqdm(causality_df.iterrows(), desc='Building Causality from df'):
-            child_name = row[self.child_col_name]
-            if child_name not in self.extended_vocab:
-                logging.debug('Ignoring node %s as not in dataset', child_name)
+            child_id = row[self.child_id_col]
+            if child_id not in self.extended_vocab:
+                logging.debug('Ignoring node %s as not in dataset', child_id)
                 continue
 
-            parent_name = row[self.parent_col_name]
-            if parent_name not in self.extended_vocab:
-                logging.debug('Ignoring node %s as not in dataset', parent_name)
+            parent_id = row[self.parent_id_col]
+            if parent_id not in self.extended_vocab:
+                logging.debug('Ignoring node %s as not in dataset', parent_id)
                 continue
 
-            child_node = self.nodes[self.extended_vocab[row[self.child_col_name]]]
-            parent_node = self.nodes[self.extended_vocab[row[self.parent_col_name]]]
+            child_node = self.nodes[self.extended_vocab[child_id]]
+            parent_node = self.nodes[self.extended_vocab[parent_id]]
 
             child_node.in_nodes.add(parent_node)
             parent_node.out_nodes.add(child_node)
@@ -39,8 +34,8 @@ class CausalityKnowledge:
         logging.info('Built causality with %d nodes', len(self.nodes))
 
     def _build_extended_vocab(self, causality_df: pd.DataFrame, vocab: Dict[str, int]):
-        self.extended_vocab = {}
-        self.nodes = {}
+        self.extended_vocab: Dict[str, int] = {}
+        self.nodes: Dict[int, Node] = {}
 
         labels_to_handle = list(vocab.keys())
         max_index = max(vocab.values())
@@ -51,26 +46,31 @@ class CausalityKnowledge:
             if label in vocab:
                 self.extended_vocab[label] = vocab[label]
 
-                parents_df = causality_df[causality_df[self.child_col_name] == label]
-                parents = list(set(parents_df[self.parent_col_name]))
+                parents_df = causality_df[causality_df[self.child_id_col] == label]
+                parents = list(set(parents_df[self.parent_id_col]))
                 labels_to_handle = labels_to_handle + parents
                 
-                child_df = causality_df[causality_df[self.parent_col_name] == label]
-                children = list(set(child_df[self.child_col_name]))
+                child_df = causality_df[causality_df[self.parent_id_col] == label]
+                children = list(set(child_df[self.child_id_col]))
                 labels_to_handle = labels_to_handle + children
             else:
                 self.extended_vocab[label] = max_index + 1
                 max_index = max_index + 1
 
+            label_names = set(causality_df[causality_df[self.child_id_col] == label][self.child_name_col])
+            label_names.update(set(causality_df[causality_df[self.parent_id_col] == label][self.parent_name_col]))
+
             self.nodes[self.extended_vocab[label]] = Node(
                 label_idx=self.extended_vocab[label], 
-                label_str=label)
+                label_str=label,
+                label_names=label_names,
+            )
 
         if max_index == max(vocab.values()):
             logging.debug('Adding VOID node to ensure extended vocab > vocab')
             self.extended_vocab['_VOID_'] = max_index + 1
 
-        self.extra_vocab = {k:v for k,v in self.extended_vocab.items() if k not in self.vocab}
+        self.extra_vocab: Dict[str, int] = {k:v for k,v in self.extended_vocab.items() if k not in self.vocab}
 
     def __str__(self):
         all_strings = []

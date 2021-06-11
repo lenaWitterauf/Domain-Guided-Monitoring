@@ -2,6 +2,7 @@ from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
 import logging
 from tqdm import tqdm
+from typing import Dict, Set
 from src.features.knowledge import HierarchyKnowledge
 from .base import BaseModel, BaseEmbedding
 from .config import ModelConfig
@@ -24,17 +25,24 @@ class GramEmbedding(tf.keras.Model, BaseEmbedding):
     def _init_basic_embedding_variables(self, hierarchy: HierarchyKnowledge):
         logging.info('Initializing GRAM basic embedding variables')
         self.basic_feature_embeddings = self.add_weight(
-            initializer=self._get_feature_initializer(hierarchy.vocab),
+            initializer=self._get_feature_initializer(
+                self._load_description_vocab(hierarchy, set(hierarchy.vocab.values()))
+            ),
             trainable=self.config.base_feature_embeddings_trainable,
             name='gram_embedding/basic_feature_embeddings',
             shape=(self.num_features,self.config.embedding_dim),
         )
         self.basic_hidden_embeddings = self.add_weight(
-            initializer=self._get_hidden_initializer(hierarchy.extra_vocab),
+            initializer=self._get_hidden_initializer(
+                self._load_description_vocab(hierarchy, set(hierarchy.extra_vocab.values()))
+            ),
             trainable=self.config.base_hidden_embeddings_trainable,
             name='gram_embedding/basic_hidden_embeddings',
             shape=(self.num_hidden_features,self.config.embedding_dim),
         )
+
+    def _load_description_vocab(self, hierarchy: HierarchyKnowledge, ids: Set[int]) -> Dict[int, str]:
+        return {idx:node.label_name for idx, node in hierarchy.nodes.items() if idx in ids}
 
     def _init_embedding_mask(self, hierarchy: HierarchyKnowledge): 
         logging.info('Initializing GRAM ancestor information')

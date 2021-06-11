@@ -22,22 +22,22 @@ class BaseEmbedding:
         """Overwrite this in case embedding uses attention mechanism etc"""
         return self.basic_feature_embeddings
 
-    def _get_initializer(self, initializer_name: str, initializer_seed: int, word_vocab: Dict[str, int]) -> tf.keras.initializers.Initializer:
+    def _get_initializer(self, initializer_name: str, initializer_seed: int, description_vocab: Dict[int, str]) -> tf.keras.initializers.Initializer:
         if initializer_name == 'random_uniform':
             return tf.keras.initializers.GlorotUniform(seed=initializer_seed)
         elif initializer_name == 'random_normal':
             return tf.keras.initializers.GlorotNormal(seed=initializer_seed)
         elif initializer_name == 'fasttext':
             initializer = FastTextInitializer(self.config.embedding_dim)
-            return initializer.get_initializer(word_vocab)
+            return initializer.get_initializer(description_vocab)
         else:
             logging.error('Unknown initializer %s', initializer_name)  
 
-    def _get_feature_initializer(self, word_vocab: Dict[str, int]) -> tf.keras.initializers.Initializer:
-        return self._get_initializer(self.config.feature_embedding_initializer, self.config.feature_embedding_initializer_seed, word_vocab)
+    def _get_feature_initializer(self, description_vocab: Dict[int, str]) -> tf.keras.initializers.Initializer:
+        return self._get_initializer(self.config.feature_embedding_initializer, self.config.feature_embedding_initializer_seed, description_vocab)
 
-    def _get_hidden_initializer(self, word_vocab: Dict[str, int]) -> tf.keras.initializers.Initializer:
-        return self._get_initializer(self.config.hidden_embedding_initializer, self.config.hidden_embedding_initializer_seed, word_vocab)
+    def _get_hidden_initializer(self, description_vocab: Dict[int, str]) -> tf.keras.initializers.Initializer:
+        return self._get_initializer(self.config.hidden_embedding_initializer, self.config.hidden_embedding_initializer_seed, description_vocab)
 
 class BaseModel:
     def __init__(self):
