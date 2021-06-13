@@ -158,6 +158,8 @@ class MimicPreprocessor(Preprocessor):
             'icd9_code': lambda x: list(x),
             'icd9_code_converted': lambda x: list(x),
             'icd9_code_converted_3digits': lambda x: list(x),
+            'icd9_code_name': lambda x: list(x),
+            'icd9_code_name_3digits': lambda x: list(x),
         })
         combined_df = pd.merge(admission_df, codes_per_admission, on=['hadm_id'])
         admissions_per_subject = combined_df.groupby('subject_id').agg({
@@ -167,6 +169,8 @@ class MimicPreprocessor(Preprocessor):
             'icd9_code': lambda x: list(x),
             'icd9_code_converted': lambda x: list(x),
             'icd9_code_converted_3digits': lambda x: list(x),
+            'icd9_code_name': lambda x: list(x),
+            'icd9_code_name_3digits': lambda x: list(x),
         }).reset_index()
         admissions_per_subject['num_admissions'] = admissions_per_subject['hadm_id'].apply(len)
         return admissions_per_subject

@@ -69,6 +69,11 @@ class CausalityKnowledge:
         if max_index == max(vocab.values()):
             logging.debug('Adding VOID node to ensure extended vocab > vocab')
             self.extended_vocab['_VOID_'] = max_index + 1
+            self.nodes[self.extended_vocab['_VOID_']] = Node(
+                label_idx=self.extended_vocab['_VOID_'], 
+                label_str='_VOID_',
+                label_names=set(['_VOID_']),
+            )
 
         self.extra_vocab: Dict[str, int] = {k:v for k,v in self.extended_vocab.items() if k not in self.vocab}
 

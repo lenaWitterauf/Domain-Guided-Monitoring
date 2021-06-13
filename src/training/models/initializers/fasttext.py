@@ -48,4 +48,4 @@ class FastTextInitializer:
             [word_embeddings[x] for x in sorted(word_embeddings.keys())],
             axis=1,
         )
-        return tf.keras.initializers.Constant(value=concatenated_word_embeddings)
+        return tf.keras.initializers.Constant(value=concatenated_word_embeddings.numpy())
