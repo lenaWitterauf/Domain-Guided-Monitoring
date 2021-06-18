@@ -1,5 +1,6 @@
 import dataclass_cli
 import dataclasses
+from typing import List
 
 
 @dataclass_cli.add
@@ -18,3 +19,11 @@ class ModelConfig:
     distribute_strategy: str = ""
     best_model_metric: str = "val_loss"
     best_model_metric_minimize: bool = True
+
+@dataclass_cli.add
+@dataclasses.dataclass
+class TextualPaperModelConfig:
+    num_filters: int = 16
+    kernel_sizes: List[int] = dataclasses.field(
+        default_factory=lambda: [2, 3, 4],
+    )           

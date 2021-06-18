@@ -74,32 +74,69 @@ class ExperimentRunner:
         if not artifact_path.exists():
             artifact_path.mkdir()
 
-        embedding_helper = analysis.EmbeddingHelper(
-            metadata.x_vocab, knowledge, model.embedding_layer
-        )
-        embedding_helper.write_embeddings(
-            vec_file_name=artifact_dir + "vecs.tsv",
-            meta_file_name=artifact_dir + "meta.tsv",
-        )
-        embedding_helper.write_attention_weights(
-            file_name=artifact_dir + "attention.json",
+        self._generate_metric_artifacts(artifact_dir, model)
+        self._generate_embedding_artifacts(artifact_dir, metadata, knowledge, model)
+        self._generate_confusion_artifacts(
+            artifact_dir, metadata, model, train_dataset, test_dataset
         )
 
+        mlflow.log_artifacts(artifact_dir)
+
+    def _generate_metric_artifacts(
+        self, artifact_dir: str, model: models.BaseModel,
+    ):
         metric_plotter = analysis.MetricPlotter(model, plot_path=artifact_dir)
         metric_plotter.plot_all_metrics()
 
-        if not self.multilabel_classification:
-            confusion_calculator = confusion.ConfusionCalculator(
-                metadata, model.prediction_model
+    def _generate_confusion_artifacts(
+        self,
+        artifact_dir: str,
+        metadata: sequences.SequenceMetadata,
+        model: models.BaseModel,
+        train_dataset: tf.data.Dataset,
+        test_dataset: tf.data.Dataset,
+    ):
+        if self.multilabel_classification:
+            logging.error(
+                "Can't create confusion matrix for multilabel classification!"
             )
-            confusion_calculator.write_confusion_for_dataset(
-                train_dataset, out_file_name=artifact_dir + "confusion_train.csv"
-            )
-            confusion_calculator.write_confusion_for_dataset(
-                test_dataset, out_file_name=artifact_dir + "confusion_test.csv"
-            )
+            return
 
-        mlflow.log_artifacts(artifact_dir)
+        confusion_calculator = confusion.ConfusionCalculator(
+            metadata, model.prediction_model
+        )
+        confusion_calculator.write_confusion_for_dataset(
+            train_dataset, out_file_name=artifact_dir + "confusion_train.csv"
+        )
+        confusion_calculator.write_confusion_for_dataset(
+            test_dataset, out_file_name=artifact_dir + "confusion_test.csv"
+        )
+
+    def _generate_embedding_artifacts(
+        self,
+        artifact_dir: str,
+        metadata: sequences.SequenceMetadata,
+        knowledge: Any,
+        model: models.BaseModel,
+    ):
+        embedding_helper = analysis.EmbeddingHelper(
+            metadata.x_vocab, knowledge, model.embedding_layer
+        )
+        if self.config.model_type in ["simple", "text_paper"]:
+            embedding_helper.write_embeddings(
+                vec_file_name=artifact_dir + "vecs.tsv",
+                meta_file_name=artifact_dir + "meta.tsv",
+                include_base_embeddings=False,
+            )
+        else:
+            embedding_helper.write_embeddings(
+                vec_file_name=artifact_dir + "vecs.tsv",
+                meta_file_name=artifact_dir + "meta.tsv",
+                include_base_embeddings=True,
+            )
+            embedding_helper.write_attention_weights(
+                file_name=artifact_dir + "attention.json",
+            )
 
     def _create_dataset(
         self, sequence_df: pd.DataFrame

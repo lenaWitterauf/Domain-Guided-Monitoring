@@ -1,85 +1,126 @@
 from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
-from typing import Dict
+from typing import List
 import logging
 import fasttext.util
 from tqdm import tqdm
 from src.features.knowledge import DescriptionKnowledge
-from .base import BaseModel
+from .base import BaseEmbedding, BaseModel
+from .config import ModelConfig, TextualPaperModelConfig
 
-class DescriptionPaperEmbedding(tf.keras.Model):
-    embedding_size: int
-    filter_dim: int = 16
-    kernel_dim: int = 3
-    pool_size: int = 5
-    pool_strides: int = 2
 
-    embeddings: Dict[int, tf.Tensor]
-    concatenated_embeddings: tf.Tensor # shape: (num_variables, max_words_per_description, word_embedding_size)
-
-    def __init__(self, 
-            descriptions: DescriptionKnowledge, 
-            embedding_size: int = 16):
+class DescriptionPaperEmbedding(tf.keras.Model, BaseEmbedding):
+    def __init__(
+        self,
+        descriptions: DescriptionKnowledge,
+        config: ModelConfig,
+        textual_config: TextualPaperModelConfig,
+    ):
         super(DescriptionPaperEmbedding, self).__init__()
-        self.embedding_size = embedding_size
-        self.out_layer = tf.keras.layers.Dense(embedding_size)
-        self._init_embedding_variables(descriptions)
-        self._init_embedding_layers(descriptions)
+        self.config = config
+        self.textual_config = textual_config
+
+        self.num_features = len(descriptions.vocab)
+        self.num_hidden_features = 0
+
+        self._init_basic_embedding_variables(descriptions)
+        self._init_convolution_layers(descriptions)
 
     def _load_fasttext_model(self):
-        logging.info('(Down)loading fasttext English language model')
-        fasttext.util.download_model('en', if_exists='ignore')
-        return fasttext.load_model('cc.en.300.bin')
-    
-    def _init_embedding_variables(self, descriptions: DescriptionKnowledge):
-        logging.info('Initializing Description embedding variables')
-        self.embeddings = {}
-        self.concatenated_embeddings = {}
+        logging.info("(Down)loading fasttext English language model")
+        fasttext.util.download_model("en", if_exists="ignore")
+        return fasttext.load_model("cc.en.300.bin")
+
+    def _init_basic_embedding_variables(self, descriptions: DescriptionKnowledge):
+        logging.info("Initializing Description embedding variables")
+        embeddings = {}
         word_model = self._load_fasttext_model()
         pad_vector = tf.constant(0.0, shape=(word_model.get_dimension(),))
 
-        for idx, description_words in tqdm(descriptions.descriptions.items(), desc='Initializing Description embedding variables'):
-            self.embeddings[idx] = tf.stack(
+        for idx, description_words in tqdm(
+            descriptions.descriptions.items(),
+            desc="Initializing Description embedding variables",
+        ):
+            embeddings[idx] = tf.stack(
                 [
-                    tf.constant(word_model.get_word_vector(word)) 
+                    tf.constant(word_model.get_word_vector(word))
                     for word in description_words
-                ] + [
-                    pad_vector 
-                    for i in range(descriptions.max_description_length) 
+                ]
+                + [
+                    pad_vector
+                    for i in range(descriptions.max_description_length)
                     if i >= len(description_words)
-                ], axis=0
+                ],
+                axis=0,
             )
-                    
-        self.concatenated_embeddings = tf.stack(
+
+        concatenated_embeddings = tf.stack(
+            [embeddings[i] for i in range(len(descriptions.descriptions))], axis=0
+        )  # shape: (num_variables, max_words_per_description, word_embedding_size)
+        self.basic_feature_embeddings = self.add_weight(
+            initializer=tf.keras.initializers.constant(
+                value=concatenated_embeddings.numpy(),
+            ),
+            trainable=self.config.base_feature_embeddings_trainable,
+            name="description_paper_embeddings/basic_hidden_embeddings",
+            shape=(
+                self.num_features,
+                descriptions.max_description_length,
+                word_model.get_dimension(),
+            ),
+        )
+
+    def _init_convolution_layers(self, descriptions: DescriptionKnowledge):
+        logging.info("Initializing Description convolution layers")
+        conv_layers = [
+            tf.keras.layers.Conv1D(
+                filters=self.textual_config.num_filters,
+                kernel_size=kernel_size,
+                activation="relu",
+                input_shape=(
+                    descriptions.max_description_length,
+                    self.basic_feature_embeddings.shape[2],
+                ),
+            )
+            for kernel_size in self.textual_config.kernel_sizes
+        ]
+
+        input_layer = tf.keras.layers.Input(
+            shape=self.basic_feature_embeddings.shape[1:],
+            batch_size=self.basic_feature_embeddings.shape[0],
+        )
+        pool_layer = tf.keras.layers.MaxPooling1D(
+            pool_size=self.textual_config.num_filters, strides=None,
+        )
+        flatten_layer = tf.keras.layers.Flatten()
+        concatenation_layer = tf.keras.layers.Concatenate(axis=1)
+        output = concatenation_layer(
             [
-                self.embeddings[i] 
-                for i in range(len(descriptions.descriptions))
-            ], axis=0)
+                flatten_layer(pool_layer(conv_layer(input_layer)))
+                for conv_layer in conv_layers
+            ]
+        )  # shape: (num_variables, pool_layers * filter_dim))
+        self.embedding_model = tf.keras.models.Model(inputs=input_layer, outputs=output)
 
-    def _init_embedding_layers(self, descriptions: DescriptionKnowledge): 
-        logging.info('Initializing Description embedding layers')
-        self.conv_layer = tf.keras.layers.Conv1D(
-            filters=self.filter_dim,
-            kernel_size=self.kernel_dim,
-            activation='relu',
-            input_shape=(descriptions.max_description_length, 300))
-        self.pool_layer = tf.keras.layers.MaxPooling1D(
-            pool_size=self.pool_size,
-            strides=self.pool_strides)
-        self.embedding_matrix = tf.keras.layers.Flatten()(
-            self.pool_layer(
-                self.conv_layer(
-                    self.concatenated_embeddings
-                )
-            )
-        ) # shape: (num_variables, pool_layers * filter_dim)
+    def _final_embedding_matrix(self):
+        return self.embedding_model(
+            self.basic_feature_embeddings
+        )  # shape: (num_variables, pool_layers * filter_dim)
 
-
-    def call(self, values): # values shape: (dataset_size, max_sequence_length, num_leaf_nodes)
-        embedding_representation = tf.linalg.matmul(values, self.embedding_matrix)
-        return self.out_layer(embedding_representation) # shape: (dataset_size, max_sequence_length, embedding_size)
+    def call(
+        self, values
+    ):  # values shape: (dataset_size, max_sequence_length, num_leaf_nodes)
+        embedding_matrix = self._final_embedding_matrix()
+        return tf.linalg.matmul(
+            values, embedding_matrix
+        )  # shape: (dataset_size, max_sequence_length, embedding_size)
 
 
 class DescriptionPaperModel(BaseModel):
-    def _get_embedding_layer(self, metadata: SequenceMetadata, knowledge: DescriptionKnowledge) -> tf.keras.Model:
-        return DescriptionPaperEmbedding(knowledge, embedding_size=self.config.embedding_dim)
+    def _get_embedding_layer(
+        self, metadata: SequenceMetadata, knowledge: DescriptionKnowledge
+    ) -> tf.keras.Model:
+        return DescriptionPaperEmbedding(
+            knowledge, self.config, textual_config=TextualPaperModelConfig()
+        )
+

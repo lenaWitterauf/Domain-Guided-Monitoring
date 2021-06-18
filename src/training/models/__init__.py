@@ -6,4 +6,4 @@ from .textual import DescriptionModel, DescriptionEmbedding
 from .textual_paper import DescriptionPaperModel, DescriptionPaperEmbedding
 from .causal import CausalityEmbedding, CausalityModel
 from .base import BaseEmbedding, BaseModel
-from .config import ModelConfig
+from .config import ModelConfig, TextualPaperModelConfig

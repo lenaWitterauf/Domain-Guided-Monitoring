@@ -16,6 +16,7 @@ def _log_all_configs_to_mlflow():
         preprocessing.mimic.MimicPreprocessorConfig(),
         sequences.SequenceConfig(),
         models.ModelConfig(),
+        models.TextualPaperModelConfig(),
     ]:
         for config_name, config_value in vars(config).items():
             full_config_name = config.__class__.__name__ + config_name

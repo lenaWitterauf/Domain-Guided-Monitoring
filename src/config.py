@@ -10,7 +10,7 @@ class ExperimentConfig:
     max_data_size: int = -1
     use_dataset_generator: bool = True
     batch_size: int = 32
-    multilabel_classification: bool = True
+    multilabel_classification: bool = False
     # using this will cache dataset accross different runs.
     # don't use this if you change settings for creating the dataset!
     dataset_generator_cache_file: str = ''
