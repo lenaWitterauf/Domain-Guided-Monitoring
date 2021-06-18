@@ -165,6 +165,9 @@ class BaseModel:
             tf.keras.metrics.TopKCategoricalAccuracy(
                 k=10, name="top_10_categorical_accuracy"
             ),
+            tf.keras.metrics.TopKCategoricalAccuracy(
+                k=20, name="top_20_categorical_accuracy"
+            ),
         ]
         self.prediction_model.compile(
             loss=tf.keras.losses.CategoricalCrossentropy(),
