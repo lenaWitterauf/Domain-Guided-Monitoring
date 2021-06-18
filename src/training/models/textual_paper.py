@@ -72,8 +72,8 @@ class DescriptionPaperEmbedding(tf.keras.Model, BaseEmbedding):
 
     def _init_convolution_layers(self, descriptions: DescriptionKnowledge):
         logging.info("Initializing Description convolution layers")
-        conv_layers = [
-            tf.keras.layers.Conv1D(
+        conv_layers = {
+            kernel_size:tf.keras.layers.Conv1D(
                 filters=self.textual_config.num_filters,
                 kernel_size=kernel_size,
                 activation="relu",
@@ -83,23 +83,29 @@ class DescriptionPaperEmbedding(tf.keras.Model, BaseEmbedding):
                 ),
             )
             for kernel_size in self.textual_config.kernel_sizes
-        ]
+        }
+        pool_layers = {
+            kernel_size:tf.keras.layers.MaxPooling1D(
+                pool_size=descriptions.max_description_length-kernel_size+1, 
+                strides=None,
+            )
+            for kernel_size in self.textual_config.kernel_sizes
+        }
 
         input_layer = tf.keras.layers.Input(
             shape=self.basic_feature_embeddings.shape[1:],
             batch_size=self.basic_feature_embeddings.shape[0],
         )
-        pool_layer = tf.keras.layers.MaxPooling1D(
-            pool_size=self.textual_config.num_filters, strides=None,
-        )
-        flatten_layer = tf.keras.layers.Flatten()
-        concatenation_layer = tf.keras.layers.Concatenate(axis=1)
-        output = concatenation_layer(
+        output = tf.keras.layers.Concatenate(axis=1)(
             [
-                flatten_layer(pool_layer(conv_layer(input_layer)))
-                for conv_layer in conv_layers
+                tf.keras.layers.Flatten()(
+                    pool_layers[kernel_size](
+                        conv_layers[kernel_size](input_layer)
+                    )
+                )
+                for kernel_size in self.textual_config.kernel_sizes
             ]
-        )  # shape: (num_variables, pool_layers * filter_dim))
+        )  # shape: (num_variables, num_pool_layers * filter_dim))
         self.embedding_model = tf.keras.models.Model(inputs=input_layer, outputs=output)
 
     def _final_embedding_matrix(self):
