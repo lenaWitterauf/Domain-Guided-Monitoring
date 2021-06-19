@@ -1,4 +1,3 @@
-from tensorflow._api.v2 import data
 from src.features.sequences.transformer import SequenceMetadata
 import unittest
 import numpy as np
@@ -79,12 +78,8 @@ class TestConfusionCalculator(unittest.TestCase):
         confusion_calculator = confusion.ConfusionCalculator(metadata, model)
         confusion_df = confusion_calculator._calculate_confusion_df_for_dataset(dataset)
         assert_frame_equal(
-            confusion_df.sort_values(by=["true_label", "predicted_label"]).reset_index(
-                drop=True
-            ),
-            expected_confusion_df.sort_values(
-                by=["true_label", "predicted_label"]
-            ).reset_index(drop=True),
+            confusion_df,
+            expected_confusion_df,
             check_like=True,
             check_dtype=False,
         )

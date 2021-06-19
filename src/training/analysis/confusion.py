@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from sklearn.metrics import confusion_matrix 
 
 from tensorflow._api.v2 import data
 from ...features.sequences import SequenceMetadata
@@ -55,21 +56,9 @@ class ConfusionCalculator:
     def _calculate_confusion_matrix(
         self, y_true: np.array, y_pred: np.array
     ) -> np.array:
-        confusion_matrix = np.zeros(
-            shape=(y_true.shape[1], y_true.shape[1]), dtype=np.int32
+        return confusion_matrix(
+            y_true.argmax(axis=1), 
+            y_pred.argmax(axis=1),
+            labels=range(y_true.shape[1])
         )
-        for batch_idx in range(y_true.shape[0]):
-            for true_label_idx in range(y_true.shape[1]):
-                true_value = y_true[batch_idx, true_label_idx]
-                if true_value == 1:
-                    for pred_label_idx in range(y_true.shape[1]):
-                        pred_value = y_pred[batch_idx, pred_label_idx]
-                        if pred_value == 1:
-                            confusion_matrix[true_label_idx, pred_label_idx] = (
-                                confusion_matrix[true_label_idx, pred_label_idx] + 1
-                            )
-                            break
-                    break
-
-        return confusion_matrix
 
