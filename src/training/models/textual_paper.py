@@ -94,7 +94,6 @@ class DescriptionPaperEmbedding(tf.keras.Model, BaseEmbedding):
 
         input_layer = tf.keras.layers.Input(
             shape=self.basic_feature_embeddings.shape[1:],
-            batch_size=self.basic_feature_embeddings.shape[0],
         )
         output = tf.keras.layers.Concatenate(axis=1)(
             [

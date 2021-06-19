@@ -1,5 +1,4 @@
 import pandas as pd
-import tensorflow as tf
 from .transformer import load_sequence_transformer
 from pathlib import Path
 
