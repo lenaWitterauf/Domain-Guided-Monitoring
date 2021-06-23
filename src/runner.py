@@ -1,3 +1,4 @@
+from src.features.sequences.transformer import SequenceMetadata
 from src.training.analysis import confusion
 from src.training import analysis, models
 from src.features import preprocessing, sequences, knowledge
@@ -41,17 +42,22 @@ class ExperimentRunner:
             self.config.n_epochs,
         )
 
-        self._log_dataset_info(train_dataset, test_dataset)
+        self._log_dataset_info(train_dataset, test_dataset, metadata)
         self._generate_artifacts(
             metadata, train_dataset, test_dataset, knowledge, model
         )
         self._set_mlflow_tags(metadata)
 
     def _log_dataset_info(
-        self, train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset
+        self,
+        train_dataset: tf.data.Dataset,
+        test_dataset: tf.data.Dataset,
+        metadata: SequenceMetadata,
     ):
         mlflow.log_metric("train_size", len([x for x in train_dataset]))
         mlflow.log_metric("test_size", len([x for x in test_dataset]))
+        mlflow.log_metric("x_vocab_size", len(metadata.x_vocab))
+        mlflow.log_metric("y_vocab_size", len(metadata.y_vocab))
 
     def _set_mlflow_tags(self, metadata: sequences.SequenceMetadata):
         mlflow.set_tag("sequence_type", self.config.sequence_type)
