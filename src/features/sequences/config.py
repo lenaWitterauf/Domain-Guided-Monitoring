@@ -17,4 +17,6 @@ class SequenceConfig:
     valid_y_features: List[str] = dataclasses.field(
         default_factory=lambda: [],
     )                               # if not empty, only these features are used as prediction goals
-    remove_empty_v_vecs: bool=True  # if true, removes (x,y) pairs where y is a zero vector
+    remove_empty_y_vecs: bool=True  # if true, removes (x,y) pairs where y is a zero vector
+    x_sequence_column_name: str = ''
+    y_sequence_column_name: str = ''

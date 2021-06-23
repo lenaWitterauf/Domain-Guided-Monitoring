@@ -252,23 +252,48 @@ class NextSequenceTransformer:
 
 class NextPartialSequenceTransformer(NextSequenceTransformer):
     """Split Sequences for next sequence prediction, but only keep some of the features as prediciton goals."""
-    valid_y_features: List[str]
-    remove_empty_v_vecs: bool
+
+    def set_valid_x_features(self, valid_x_features: List[str]):
+        self.valid_x_features: List[str] = valid_x_features
+
+    def set_valid_y_features(self, valid_y_features: List[str]):
+        self.valid_y_features: List[str] = valid_y_features
+    
+    def set_remove_empty_y_vecs(self, remove_empty_y_vecs: bool):
+        self.remove_empty_y_vecs: bool = remove_empty_y_vecs
 
     def _generate_vocabs(self, sequence_df: pd.DataFrame, sequence_column_name: str) -> Tuple[Dict[str, int], Dict[str, int]]:
-        x_vocab = self._generate_vocab(sequence_df, sequence_column_name)
-        y_vocab = self._generate_vocab_from_list(self.valid_y_features)
+        x_vocab = self._generate_vocab_from_list(self.valid_x_features) if len(self.valid_x_features) > 0 else self._generate_vocab(sequence_df, sequence_column_name)
+        y_vocab = self._generate_vocab_from_list(self.valid_y_features) if len(self.valid_y_features) > 0 else self._generate_vocab(sequence_df, sequence_column_name)
+
         return (x_vocab, y_vocab)
 
-    def _transform_sequences(self, sequences: List[List[List[str]]], metadata: SequenceMetadata) -> List[_SplittedSequence]:
-        transformed_sequences = super()._transform_sequences(sequences, metadata)
-        if self.remove_empty_v_vecs:
+    def _split_sequence(self, sequence: List[List[str]]):
+        splitted_sequence_generator = super()._split_sequence(sequence)
+        if self.remove_empty_y_vecs and len(self.valid_y_features) > 0:
             return [
-                sequence for sequence in transformed_sequences
+                sequence for sequence in splitted_sequence_generator
                 if not set(sequence.y).isdisjoint(self.valid_y_features)
             ]
         else:
-            return transformed_sequences
+            return splitted_sequence_generator
+
+class NextPartialSequenceTransformerFromDataframe(NextPartialSequenceTransformer):
+    """Split Sequences for next sequence prediction, but only keep some of the features as prediciton goals."""
+    def set_x_column_name(self, x_column_name: str):
+        self.x_column_name = x_column_name
+    
+    def set_y_column_name(self, y_column_name: str):
+        self.y_column_name = y_column_name
+
+    def _generate_vocabs(self, sequence_df: pd.DataFrame, sequence_column_name: str) -> Tuple[Dict[str, int], Dict[str, int]]:
+        x_vocab = self._generate_vocab(sequence_df, self.x_column_name if (self.x_column_name is not None and len(self.x_column_name) > 0) else sequence_column_name)
+        y_vocab = self._generate_vocab(sequence_df, self.y_column_name if (self.y_column_name is not None and len(self.y_column_name) > 0) else sequence_column_name)
+
+        super().set_valid_x_features([x for x in x_vocab.keys()])
+        super().set_valid_y_features([y for y in y_vocab.keys()])
+
+        return (x_vocab, y_vocab)
 
 def load_sequence_transformer() -> NextSequenceTransformer:
     config = SequenceConfig()
@@ -284,8 +309,24 @@ def load_sequence_transformer() -> NextSequenceTransformer:
             min_window_size=config.min_window_size,
             window_overlap=config.window_overlap,
         )
-        transformer.valid_y_features = config.valid_y_features
-        transformer.remove_empty_v_vecs = config.remove_empty_v_vecs
+        transformer.set_valid_y_features(config.valid_y_features)
+        transformer.set_remove_empty_y_vecs(config.remove_empty_y_vecs)
+        return transformer
+    elif len(config.x_sequence_column_name) > 0 or len(config.y_sequence_column_name) > 0:
+        logging.debug('Using only features in column %s as inputs, and features from column %s as prediction goals', config.x_sequence_column_name, config.y_sequence_column_name)
+        transformer = NextPartialSequenceTransformerFromDataframe(
+            test_percentage=config.test_percentage,
+            random_test_split=config.random_test_split,
+            random_state=config.random_state,
+            flatten_x=config.flatten_x,
+            flatten_y=config.flatten_y,
+            max_window_size=config.max_window_size,
+            min_window_size=config.min_window_size,
+            window_overlap=config.window_overlap,
+        )
+        transformer.set_x_column_name(config.x_sequence_column_name)
+        transformer.set_y_column_name(config.y_sequence_column_name)
+        transformer.set_remove_empty_y_vecs(config.remove_empty_y_vecs)
         return transformer
     else:
         return NextSequenceTransformer(
