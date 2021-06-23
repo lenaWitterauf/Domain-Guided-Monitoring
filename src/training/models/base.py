@@ -17,6 +17,7 @@ class BaseEmbedding:
     config: ModelConfig
     num_features: int
     num_hidden_features: int
+    num_connections: int
 
     basic_feature_embeddings: tf.Variable  # shape: (num_features, embedding_size)
     basic_hidden_embeddings: tf.Variable  # shape: (num_hidden_features, embedding_size)
@@ -92,11 +93,7 @@ class BaseModel:
 
         with self.strategy.scope():
             self.embedding_layer = self._get_embedding_layer(metadata, knowledge)
-            mlflow.log_metric("num_features", self.embedding_layer.num_features)
-            mlflow.log_metric(
-                "num_hidden_features", self.embedding_layer.num_hidden_features
-            )
-
+            self._log_embedding_stats()
             self.prediction_model = tf.keras.models.Sequential(
                 [
                     tf.keras.layers.Input(
@@ -107,6 +104,13 @@ class BaseModel:
                     tf.keras.layers.Dense(len(metadata.y_vocab), activation="relu"),
                 ]
             )
+
+    def _log_embedding_stats(self):
+        mlflow.log_metric("num_features", self.embedding_layer.num_features)
+        mlflow.log_metric(
+            "num_hidden_features", self.embedding_layer.num_hidden_features
+        )
+        mlflow.log_metric("num_connections", self.embedding_layer.num_connections)
 
     def _get_rnn_layer(self):
         if self.config.rnn_type == "rnn":

@@ -84,21 +84,12 @@ class EmbeddingHelper:
         out_meta.close()
 
     def load_attention_weights(self) -> Dict[str, Dict[str, str]]:
-        if isinstance(self.knowledge, CausalityKnowledge):
-            return self._load_attention_weights(
-                self._load_relevant_words_for_causal(self.knowledge)
-            )
-        elif isinstance(self.knowledge, HierarchyKnowledge):
-            return self._load_attention_weights(
-                self._load_relevant_words_for_hierarchy(self.knowledge)
-            )
-        elif isinstance(self.knowledge, DescriptionKnowledge):
-            return self._load_attention_weights(
-                self._load_relevant_words_for_text(self.knowledge)
-            )
-        else:
-            logging.error("Unknown knowledge type %s", str(self.knowledge))
-            return {}
+        return self._load_attention_weights(
+            self._reverse_vocab(self.knowledge.extended_vocab)
+        )
+
+    def _reverse_vocab(self, vocab: Dict[str, int]) -> Dict[int, str]:
+        return {v:k for k,v in vocab.items()}
 
     def write_attention_weights(self, file_name: str = "data/attention.json"):
         attention_weights = self.load_attention_weights()
@@ -107,53 +98,27 @@ class EmbeddingHelper:
         json_file.close()
 
     def _load_attention_weights(
-        self, relevant_words: Dict[str, List[Tuple[str, int]]]
+        self, vocab: Dict[int, str]
     ) -> Dict[str, Dict[str, str]]:
         attention_weights: Dict[str, Dict[str, str]] = {}
         _, attention_matrix = self.embedding._calculate_attention_embeddings()
+        flattened_attention_matrix = [aw[0] for sublist in attention_matrix.numpy() for aw in sublist]
+        connection_indices = self.embedding.flattened_connection_indices
+        connection_partition = self.embedding.connection_partition
 
-        for word, idx in self.vocab.items():
-            attention_weights[word] = {}
-            attention_vector = attention_matrix[idx].numpy().flatten()
+        for connection_idx in range(len(connection_indices)):
+            from_idx = connection_partition[connection_idx]
+            to_idx = connection_indices[connection_idx]
 
-            for extra_word, extra_idx in relevant_words[word]:
-                attention_weights[word][extra_word] = str(attention_vector[extra_idx])
+            from_word = vocab[from_idx]
+            to_word = vocab[to_idx]
+
+            if from_word not in attention_weights:
+                attention_weights[from_word] = {}
+            
+            attention_weights[from_word][to_word] = str(flattened_attention_matrix[connection_idx])
 
         return attention_weights
-
-    def _load_relevant_words_for_hierarchy(
-        self, hierarchy: HierarchyKnowledge
-    ) -> Dict[str, List[Tuple[str, int]]]:
-        relevant_words = {}
-        for _, node in hierarchy.nodes.items():
-            relevant_words[node.label_str] = [
-                (n.label_str, n.label_idx) for n in node.get_ancestors()
-            ]
-
-        return relevant_words
-
-    def _load_relevant_words_for_causal(
-        self, causal_knowledge: CausalityKnowledge
-    ) -> Dict[str, List[Tuple[str, int]]]:
-        relevant_words = {}
-        for _, node in causal_knowledge.nodes.items():
-            relevant_words[node.label_str] = [
-                (n.label_str, n.label_idx) for n in node.get_neighbours()
-            ]
-
-        return relevant_words
-
-    def _load_relevant_words_for_text(
-        self, description_knowledge: DescriptionKnowledge
-    ) -> Dict[str, List[Tuple[str, int]]]:
-        relevant_words = {}
-        for word, idx in description_knowledge.vocab.items():
-            relevant_words[word] = [
-                (word, description_knowledge.extended_vocab[word])
-                for word in description_knowledge.descriptions_set[idx]
-            ]
-
-        return relevant_words
 
     def _create_one_hot_vector_for(self, idx: int, total_length: int) -> tf.Tensor:
         vec = np.zeros(total_length)

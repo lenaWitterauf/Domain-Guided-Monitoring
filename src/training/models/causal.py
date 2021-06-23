@@ -2,10 +2,10 @@ from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
 import logging
 from tqdm import tqdm
-from typing import Dict, Set
 from src.features.knowledge import CausalityKnowledge
 from .base import BaseModel, BaseEmbedding
 from .config import ModelConfig
+from typing import Dict, List, Set
 
 
 class CausalityEmbedding(tf.keras.Model, BaseEmbedding):
@@ -22,7 +22,7 @@ class CausalityEmbedding(tf.keras.Model, BaseEmbedding):
         self.u = tf.keras.layers.Dense(1, use_bias=False)
 
         self._init_basic_embedding_variables(causality)
-        self._init_embedding_mask(causality)
+        self._init_connection_information(causality)
 
     def _init_basic_embedding_variables(self, causality: CausalityKnowledge):
         logging.info("Initializing CAUSALITY basic embedding variables")
@@ -52,77 +52,93 @@ class CausalityEmbedding(tf.keras.Model, BaseEmbedding):
             idx: node.label_name for idx, node in causality.nodes.items() if idx in ids
         }
 
-    def _init_embedding_mask(self, causality: CausalityKnowledge):
-        logging.info("Initializing CAUSALITY information")
-        embedding_masks = {}
-        for idx, node in tqdm(
-            causality.nodes.items(), desc="Initializing CAUSALITY information"
-        ):
-            if node.label_idx >= self.num_features:
-                continue
+    def _init_connection_information(self, causality: CausalityKnowledge):
+        logging.info("Initializing CAUSALITY connection information")
+        self.connections: Dict[int, List[int]] = {}
+        self.connection_partition: List[
+            int
+        ] = []  # connection_partition[i] = j -> {connection i relevant for j}
 
-            neighbour_idxs = set(node.get_neighbour_label_idxs() + [idx])
-            embedding_masks[idx] = [
-                (x in neighbour_idxs)
-                for x in range(self.num_features + self.num_hidden_features)
+        for idx in tqdm(
+            range(self.num_features), desc="Initializing CAUSALITY connections",
+        ):
+            node = causality.nodes[idx]
+            connected_idxs = set(node.get_neighbour_label_idxs() + [idx])
+            self.connections[idx] = sorted(list(connected_idxs))
+            self.connection_partition = self.connection_partition + [
+                idx for _ in range(len(connected_idxs))
             ]
 
-        all_embedding_masks = [
-            tf.concat(embedding_masks[idx], axis=0) for idx in range(self.num_features)
-        ]
-        self.embedding_mask = tf.Variable(
-            tf.expand_dims(tf.concat([all_embedding_masks], axis=1), axis=2),
-            trainable=False,
-        )
+        self.connection_indices = [
+            v for _, v in sorted(self.connections.items(), key=lambda x: x[0])
+        ]  # connection_indices[i,j] = k -> feature i is connected to feature k
+        self.flattened_connection_indices = [
+            x for sublist in self.connection_indices for x in sublist
+        ]  # connection k is between connection_partition[k] and flattened_connection_indices[k]
+        # connection_indices[i,j] = k -> connection_partition[l]=i, flattened_connection_indices[l]=k
+        self.num_connections = len(self.flattened_connection_indices)
 
-    def _load_full_embedding_matrix(self):
-        return tf.repeat(
-            tf.expand_dims(
-                tf.concat(
-                    [self.basic_feature_embeddings, self.basic_hidden_embeddings],
-                    axis=0,
-                ),  # shape: (num_all_features, embedding_size)
-                axis=0,
-            ),  # shape: (1, num_all_features, embedding_size)
-            repeats=self.num_features,
+    def _load_connection_embedding_matrix(self):
+        embeddings = tf.concat(
+            [self.basic_feature_embeddings, self.basic_hidden_embeddings],
             axis=0,
-        )  # shape: (num_features, num_all_features, embedding_size)
+            name="all_feature_embeddings",
+        )  # shape: (num_all_features, embedding_size)
+        return tf.gather(
+            embeddings,
+            self.flattened_connection_indices,
+            name="connected_embeddings_per_connection",
+        )  # shape: (num_connections, embedding_size)
 
     def _load_attention_embedding_matrix(self):
-        feature_embeddings = tf.repeat(
-            tf.expand_dims(
-                self.basic_feature_embeddings, axis=1
-            ),  # shape: (num_features, 1, embedding_size)
-            repeats=self.num_features + self.num_hidden_features,
-            axis=1,
-        )  # shape: (num_features, num_all_features, embedding_size)
-        full_embeddings = self._load_full_embedding_matrix()
-
+        connection_embedding_matrix = self._load_connection_embedding_matrix()
+        feature_embedding_matrix = tf.gather(
+            self.basic_feature_embeddings,
+            self.connection_partition,
+            axis=0,
+            name="feature_embeddings_per_connection",
+        )  # shape: (num_connections, embedding_size)
         return tf.concat(
-            [feature_embeddings, full_embeddings], axis=2
-        )  # shape: (num_features, num_all_features, 2*embedding_size)
+            [feature_embedding_matrix, connection_embedding_matrix],
+            axis=1,
+            name="concatenated_connection_embeddings",
+        )  # (num_connections, 2*embedding_size)
 
     def _calculate_attention_embeddings(self):
-        full_embedding_matrix = self._load_full_embedding_matrix()
+        connection_embedding_matrix = self._load_connection_embedding_matrix()
         attention_embedding_matrix = self._load_attention_embedding_matrix()
 
-        score = self.u(
+        scores = self.u(
             self.w(attention_embedding_matrix)
-        )  # shape: (num_features, num_all_features, 1)
-        score = tf.where(self.embedding_mask, tf.math.exp(score), 0)
-        score_sum = tf.reduce_sum(
-            score, axis=1, keepdims=True
-        )  # shape: (num_features, 1, 1)
-        score_sum = tf.where(score_sum == 0, 1.0, score_sum)
+        )  # shape: (num_connections, 1)
+        scores = tf.math.exp(scores)
 
-        attention_weights = (
-            score / score_sum
-        )  # shape: (num_features, num_all_features, 1)
+        scores_per_feature = tf.ragged.stack_dynamic_partitions(
+            scores,
+            partitions=self.connection_partition,
+            num_partitions=self.num_features,
+            name="attention_scores_per_feature",
+        )  # shape: (num_features, num_connections per feature)
+        score_sum_per_feature = tf.reduce_sum(
+            scores_per_feature, axis=1, name="attention_score_sum_per_feature",
+        )  # shape: (num_features, 1)
+        attention_weights = scores_per_feature / tf.expand_dims(
+            score_sum_per_feature,
+            axis=1,
+            name="normalised_attention_scores_per_feature",
+        )  # shape: (num_features, num_connections per feature)
+
+        connections_per_feature = tf.ragged.stack_dynamic_partitions(
+            connection_embedding_matrix,
+            partitions=self.connection_partition,
+            num_partitions=self.num_features,
+            name="connection_embeddings_per_feature",
+        )  # shape: (num_features, num_connections per feature, embedding_size)
         context_vector = (
-            attention_weights * full_embedding_matrix
-        )  # shape: (num_features, num_all_features, embedding_size)
+            attention_weights * connections_per_feature
+        )  # shape: (num_features, num_connections, embedding_size)
         context_vector = tf.reduce_sum(
-            context_vector, axis=1
+            context_vector, axis=1, name="context_vector",
         )  # shape: (num_features, embedding_size)
 
         return (context_vector, attention_weights)
@@ -136,7 +152,7 @@ class CausalityEmbedding(tf.keras.Model, BaseEmbedding):
     ):  # values shape: (dataset_size, max_sequence_length, num_features)
         embedding_matrix = self._final_embedding_matrix()
         return tf.linalg.matmul(
-            values, embedding_matrix
+            values, embedding_matrix,
         )  # shape: (dataset_size, max_sequence_length, embedding_size)
 
 
