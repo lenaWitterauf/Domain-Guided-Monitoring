@@ -292,6 +292,19 @@ class ExperimentRunner:
             causality = knowledge.CausalityKnowledge()
             causality.build_causality_from_df(causality_df, metadata.x_vocab)
             return causality
+        elif self.config.sequence_type == "mimic":
+            mimic_config = preprocessing.MimicPreprocessorConfig()
+            causality_preprocessor = (
+                preprocessing.KnowlifePreprocessor(
+                    knowlife_file=mimic_config.knowlife_file,
+                    umls_file=mimic_config.umls_file,
+                    umls_api_key=mimic_config.umls_api_key,
+                )
+            )
+            causality_df = causality_preprocessor.load_data()
+            causality = knowledge.CausalityKnowledge()
+            causality.build_causality_from_df(causality_df, metadata.x_vocab)
+            return causality
         else:
             logging.fatal(
                 "Causal knowledge not available for data type %s",

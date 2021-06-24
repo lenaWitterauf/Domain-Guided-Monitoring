@@ -5,8 +5,11 @@ from .base import Preprocessor
 from bs4 import BeautifulSoup
 import urllib.request
 import time
-from typing import List, Dict, Any
+from typing import List, Dict, Set
 from pathlib import Path
+import requests
+from lxml.html import fromstring
+import json
 
 
 class ICD9DataPreprocessor(Preprocessor):
@@ -37,7 +40,9 @@ class ICD9DataPreprocessor(Preprocessor):
             icd9_hierarchy_df.to_csv(self.icd9_hierarchy_file, index=False)
 
         icd9_hierarchy_df = pd.read_csv(self.icd9_hierarchy_file, dtype=str)
-        icd9_hierarchy_df["level_all"] = icd9_hierarchy_df.apply(lambda x: list(x), axis=1)
+        icd9_hierarchy_df["level_all"] = icd9_hierarchy_df.apply(
+            lambda x: list(x), axis=1
+        )
         return icd9_hierarchy_df
 
     def _find_icd9_parents_for_child(
@@ -206,3 +211,91 @@ class ICD9DataPreprocessor(Preprocessor):
                 )
 
         return hierarchy_df
+
+
+class ICD9KnowlifeMatcher:
+    umls_query_endpoint = "https://uts-ws.nlm.nih.gov/rest/content/current/CUI/{cui}/atoms?sabs=ICD9CM,MTHICD9"
+    umls_auth_endpoint = "https://utslogin.nlm.nih.gov/cas/v1/api-key"
+
+    def __init__(
+        self, umls_file: Path, umls_api_key: str,
+    ):
+        self.umls_file = umls_file
+        self.umls_api_key = umls_api_key
+
+    def _query_data(self, knowlife_df: pd.DataFrame) -> pd.DataFrame:
+        knowlife_cuis = self._load_knowlife_cuis(knowlife_df)
+
+        tgt = self._umls_gettgt()
+        mapping = {}
+        for knowlife_cui in tqdm(
+            knowlife_cuis, desc="Querying Knowlife CUI <> ICD9 mapping from UMLS"
+        ):
+            mapping[knowlife_cui] = self._load_icd9_code_via_umls(knowlife_cui, tgt)
+
+        mapping_df = pd.DataFrame.from_dict(
+            {k: [v] for k, v in mapping.items()}, orient="index", columns=["icd9_url"]
+        )
+        mapping_df["icd9_code"] = mapping_df["icd9_url"].apply(
+            lambda x: list(set([u.split("/")[-1] for u in x]))
+        )
+        mapping_df = mapping_df.explode("icd9_code", ignore_index=False).dropna()
+        mapping_df["icd9_code"] = mapping_df["icd9_code"].apply(
+            lambda x: x[0 : len(x) - 3]
+            if "-" in x and x[len(x) - 3 : len(x)] == ".99"
+            else x
+        )
+        return mapping_df.reset_index(drop=False).rename(columns={"index": "cui"})[
+            ["icd9_code", "cui"]
+        ]
+
+    def load_data(self, knowlife_df: pd.DataFrame) -> pd.DataFrame:
+        logging.info("Trying to read icd9_cui_file from %s", self.umls_file)
+        if not self.umls_file.is_file():
+            umls_df = self._query_data(knowlife_df)
+            umls_df.to_csv(self.umls_file, index=False)
+
+        return pd.read_csv(self.umls_file, dtype=str)
+
+    def _load_knowlife_cuis(self, knowlife_df: pd.DataFrame) -> Set[str]:
+        knowlife_cuis = set(knowlife_df["leftfactentity"])
+        knowlife_cuis.update(set(knowlife_df["rightfactentity"]))
+        return knowlife_cuis
+
+    def _load_icd9_code_via_umls(self, cui: str, tgt) -> List[str]:
+        path = self.umls_query_endpoint.format(code=cui)
+        try:
+            params = {"ticket": self._umls_getst(tgt)}
+            response = requests.get(path, params=params)
+            items = json.loads(response.text)
+            if "result" not in items:
+                logging.debug("Unable to find results for CUI %s", cui)
+                return []
+            else:
+                source_atoms = items["result"]
+                return [source_atom["code"] for source_atom in source_atoms]
+
+        except:
+            logging.error("Error trying to query CUI %s", cui)
+            return []
+
+    def _umls_gettgt(self):
+        params = {"apikey": self.umls_api_key}
+        headers = {
+            "Content-type": "application/x-www-form-urlencoded",
+            "Accept": "text/plain",
+            "User-Agent": "python",
+        }
+        r = requests.post(self.umls_auth_endpoint, data=params, headers=headers)
+        response = fromstring(r.text)
+        return response.xpath("//form/@action")[0]
+
+    def _umls_getst(self, tgt):
+        params = {"service": "http://umlsks.nlm.nih.gov"}
+        headers = {
+            "Content-type": "application/x-www-form-urlencoded",
+            "Accept": "text/plain",
+            "User-Agent": "python",
+        }
+        response = requests.post(tgt, data=params, headers=headers)
+        return response.text

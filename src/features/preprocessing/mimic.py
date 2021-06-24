@@ -6,7 +6,7 @@ from pathlib import Path
 from tqdm import tqdm
 from typing import List, Tuple
 from .base import Preprocessor
-from .icd9data import ICD9DataPreprocessor
+from .icd9data import ICD9DataPreprocessor, ICD9KnowlifeMatcher
 
 
 def _convert_to_icd9(dxStr: str):
@@ -46,7 +46,9 @@ class MimicPreprocessorConfig:
     min_admissions_per_user: int = 2
     sequence_column_name: str = "icd9_code_converted_3digits"
     add_icd9_info_to_sequences: bool = True
-
+    knowlife_file: Path = Path("data/knowlife_dump.tsv")
+    umls_file: Path = Path("data/umls.csv")
+    umls_api_key: str = ""
 
 class ICD9HierarchyPreprocessor(Preprocessor):
     def __init__(self, icd9_file=Path("data/icd9.csv")):
@@ -140,6 +142,54 @@ class ICD9DescriptionPreprocessor(Preprocessor):
 
     def _read_description_df(self) -> pd.DataFrame:
         return ICD9DataPreprocessor(self.icd9_file).load_data()
+
+
+class KnowlifePreprocessor(Preprocessor):
+    def __init__(
+        self,
+        knowlife_file=Path("data/knowlife_dump.tsv"),
+        umls_file=Path("data/umls.csv"),
+        umls_api_key="",
+    ):
+        self.knowlife_file = knowlife_file
+        self.umls_file = umls_file
+        self.umls_api_key = umls_api_key
+
+    def load_data(self) -> pd.DataFrame:
+        logging.info("Starting to preprocess Knowlife causality")
+        knowlife_df = self._read_knowlife_df()
+        knowlife_icd9_matching = self._read_knowlife_icd_mapping(knowlife_df)
+        left_knowlife_df = pd.merge(
+            knowlife_df,
+            knowlife_icd9_matching,
+            left_on="leftfactentity",
+            right_on="cui",
+            how="left",
+        )
+        right_knowlife_df = pd.merge(
+            knowlife_df,
+            knowlife_icd9_matching,
+            left_on="rightfactentity",
+            right_on="cui",
+            how="left",
+        )
+        knowlife_df["parent_id"] = left_knowlife_df["icd9_code"]
+        knowlife_df["child_id"] = right_knowlife_df["icd9_code"]
+        knowlife_df["parent_name"] = left_knowlife_df["icd9_code"]
+        knowlife_df["child_name"] = right_knowlife_df["icd9_code"]
+        return knowlife_df[["parent_id", "child_id", "parent_name", "child_name"]].dropna()
+
+    def _read_knowlife_icd_mapping(self, knowlife_df: pd.DataFrame) -> pd.DataFrame:
+        return ICD9KnowlifeMatcher(self.umls_file, self.umls_api_key).load_data(
+            knowlife_df
+        )
+
+    def _read_knowlife_df(self) -> pd.DataFrame:
+        knowlife_df = pd.read_csv(self.knowlife_file, sep="\t")
+        knowlife_df = knowlife_df[knowlife_df["relation"] == "causes"].reset_index(
+            drop=True
+        )
+        return knowlife_df
 
 
 class MimicPreprocessor(Preprocessor):
