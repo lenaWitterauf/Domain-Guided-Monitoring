@@ -155,14 +155,14 @@ class ExperimentRunner:
                     args=(self.sequence_df_pkl_file, self.sequence_column_name),
                     output_types=(tf.float32, tf.float32),
                 )
-                .batch(self.config.batch_size)
-                .prefetch(tf.data.experimental.AUTOTUNE)
                 .cache(self._get_cache_file_name(is_test=False))
                 .shuffle(
                     self.config.dataset_shuffle_buffer,
                     seed=self.config.dataset_shuffle_seed,
                     reshuffle_each_iteration=True,
                 )
+                .batch(self.config.batch_size)
+                .prefetch(tf.data.experimental.AUTOTUNE)
             )
             test_dataset = (
                 tf.data.Dataset.from_generator(
@@ -170,9 +170,9 @@ class ExperimentRunner:
                     args=(self.sequence_df_pkl_file, self.sequence_column_name),
                     output_types=(tf.float32, tf.float32),
                 )
+                .cache(self._get_cache_file_name(is_test=True))
                 .batch(self.config.batch_size)
                 .prefetch(tf.data.experimental.AUTOTUNE)
-                .cache(self._get_cache_file_name(is_test=True))
             )
 
             return (train_dataset, test_dataset)
