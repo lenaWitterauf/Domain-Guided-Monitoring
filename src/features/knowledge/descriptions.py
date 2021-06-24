@@ -49,5 +49,6 @@ class DescriptionKnowledge:
             self.descriptions_set[idx].add(label)
 
         for word in self.words:
+            if word in self.vocab: continue
             self.words_vocab[word] = len(self.words_vocab)  + len(self.vocab)
             self.extended_vocab[word] = self.words_vocab[word]
