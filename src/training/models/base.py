@@ -15,14 +15,12 @@ import mlflow
 
 class BaseEmbedding:
     config: ModelConfig
-    num_features: int
-    num_hidden_features: int
-    num_connections: int
+    num_features: int = 0
+    num_hidden_features: int = 0
+    num_connections: int = 0
 
     basic_feature_embeddings: tf.Variable  # shape: (num_features, embedding_size)
     basic_hidden_embeddings: tf.Variable  # shape: (num_hidden_features, embedding_size)
-
-    embedding_mask: tf.Variable  # shape: (num_features, num_all_features, 1)
 
     def _final_embedding_matrix(self):
         """Overwrite this in case embedding uses attention mechanism etc"""

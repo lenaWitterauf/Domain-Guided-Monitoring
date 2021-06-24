@@ -22,6 +22,7 @@ class DescriptionPaperEmbedding(tf.keras.Model, BaseEmbedding):
 
         self.num_features = len(descriptions.vocab)
         self.num_hidden_features = 0
+        self.num_connections = 0
 
         self._init_basic_embedding_variables(descriptions)
         self._init_convolution_layers(descriptions)
