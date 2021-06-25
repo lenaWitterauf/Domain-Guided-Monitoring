@@ -14,7 +14,7 @@ class DescriptionEmbedding(tf.keras.Model, BaseEmbedding):
         self.config = config
 
         self.num_features = len(descriptions.vocab)
-        self.num_hidden_features = len(descriptions.words)
+        self.num_hidden_features = len(descriptions.extended_vocab) - len(descriptions.vocab)
 
         self.w = tf.keras.layers.Dense(
             self.config.attention_dim, use_bias=True, activation="tanh"
