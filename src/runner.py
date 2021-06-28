@@ -1,5 +1,4 @@
 from src.features.sequences.transformer import SequenceMetadata
-from src.training.analysis import confusion
 from src.training import analysis, models
 from src.features import preprocessing, sequences, knowledge
 import pandas as pd
@@ -85,6 +84,9 @@ class ExperimentRunner:
         self._generate_confusion_artifacts(
             artifact_dir, metadata, model, train_dataset, test_dataset
         )
+        self._generate_frequency_artifacts(
+            artifact_dir, metadata, train_dataset, test_dataset
+        )
 
         mlflow.log_artifacts(artifact_dir)
 
@@ -93,6 +95,21 @@ class ExperimentRunner:
     ):
         metric_plotter = analysis.MetricPlotter(model, plot_path=artifact_dir)
         metric_plotter.plot_all_metrics()
+
+    def _generate_frequency_artifacts(
+        self,
+        artifact_dir: str,
+        metadata: sequences.SequenceMetadata,
+        train_dataset: tf.data.Dataset,
+        test_dataset: tf.data.Dataset,
+    ):
+        frequency_calculator = analysis.FrequencyCalculator(metadata,)
+        frequency_calculator.write_frequency_for_dataset(
+            train_dataset, out_file_name=artifact_dir + "frequency_train.csv"
+        )
+        frequency_calculator.write_frequency_for_dataset(
+            test_dataset, out_file_name=artifact_dir + "frequency_test.csv"
+        )
 
     def _generate_confusion_artifacts(
         self,
@@ -108,7 +125,7 @@ class ExperimentRunner:
             )
             return
 
-        confusion_calculator = confusion.ConfusionCalculator(
+        confusion_calculator = analysis.ConfusionCalculator(
             metadata, model.prediction_model
         )
         confusion_calculator.write_confusion_for_dataset(
@@ -294,12 +311,10 @@ class ExperimentRunner:
             return causality
         elif self.config.sequence_type == "mimic":
             mimic_config = preprocessing.MimicPreprocessorConfig()
-            causality_preprocessor = (
-                preprocessing.KnowlifePreprocessor(
-                    knowlife_file=mimic_config.knowlife_file,
-                    umls_file=mimic_config.umls_file,
-                    umls_api_key=mimic_config.umls_api_key,
-                )
+            causality_preprocessor = preprocessing.KnowlifePreprocessor(
+                knowlife_file=mimic_config.knowlife_file,
+                umls_file=mimic_config.umls_file,
+                umls_api_key=mimic_config.umls_api_key,
             )
             causality_df = causality_preprocessor.load_data()
             causality = knowledge.CausalityKnowledge()

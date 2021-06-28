@@ -4,7 +4,6 @@ import pandas as pd
 from tqdm import tqdm
 from sklearn.metrics import confusion_matrix 
 
-from tensorflow._api.v2 import data
 from ...features.sequences import SequenceMetadata
 
 
