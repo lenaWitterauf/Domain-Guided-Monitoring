@@ -85,7 +85,7 @@ class ExperimentRunner:
             artifact_dir, metadata, model, train_dataset, test_dataset
         )
         self._generate_frequency_artifacts(
-            artifact_dir, metadata, train_dataset, test_dataset
+            artifact_dir, metadata, model, train_dataset, test_dataset
         )
 
         mlflow.log_artifacts(artifact_dir)
@@ -100,15 +100,23 @@ class ExperimentRunner:
         self,
         artifact_dir: str,
         metadata: sequences.SequenceMetadata,
+        model: models.BaseModel,
         train_dataset: tf.data.Dataset,
         test_dataset: tf.data.Dataset,
     ):
         frequency_calculator = analysis.FrequencyCalculator(metadata,)
         frequency_calculator.write_frequency_for_dataset(
-            train_dataset, out_file_name=artifact_dir + "frequency_train.csv"
+            train_dataset, out_file_name=artifact_dir + "frequency_train.csv",
         )
         frequency_calculator.write_frequency_for_dataset(
-            test_dataset, out_file_name=artifact_dir + "frequency_test.csv"
+            test_dataset, out_file_name=artifact_dir + "frequency_test.csv",
+        )
+
+        prediction_output_calculator = analysis.PredictionOutputCalculator(
+            metadata, model.prediction_model,
+        )
+        prediction_output_calculator.write_prediction_output_for_dataset(
+            test_dataset, out_file_name=artifact_dir + "prediction_output.csv",
         )
 
     def _generate_confusion_artifacts(
@@ -348,6 +356,12 @@ class ExperimentRunner:
             hierarchy = knowledge.HierarchyKnowledge()
             hierarchy.build_hierarchy_from_df(hierarchy_df, metadata.x_vocab)
             return hierarchy
+        elif self.config.sequence_type == "c24":
+            hierarchy_preprocessor = preprocessing.C24HierarchyPreprocessor()
+            hierarchy_df = hierarchy_preprocessor.load_data()
+            hierarchy = knowledge.HierarchyKnowledge()
+            hierarchy.build_hierarchy_from_df(hierarchy_df, metadata.x_vocab)
+            return hierarchy
         else:
             logging.fatal(
                 "Hierarchy knowledge not available for data type %s",
@@ -378,6 +392,15 @@ class ExperimentRunner:
                 relevant_columns=huawei_config.relevant_aggregated_log_columns,
                 datetime_column_name=huawei_config.datetime_column_name,
                 max_sequence_length=huawei_config.max_sequence_length,
+            )
+            self.sequence_column_name = sequence_preprocessor.sequence_column_name
+            return sequence_preprocessor.load_data()
+        elif self.config.sequence_type == "c24":
+            c24_config = preprocessing.C24PreprocessorConfig()
+            sequence_preprocessor = preprocessing.C24FraudPreprocessor(
+                df_pkl=c24_config.grouped_df_pkl,
+                event_column=c24_config.event_column,
+                fraud_column=c24_config.fraud_column,
             )
             self.sequence_column_name = sequence_preprocessor.sequence_column_name
             return sequence_preprocessor.load_data()
