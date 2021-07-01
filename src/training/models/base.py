@@ -5,12 +5,14 @@ from .metrics import (
     MulticlassAccuracy,
     MulticlassTrueNegativeRate,
     MulticlassTruePositiveRate,
+    PercentileSubsetMetricHelper,
 )
 from .config import ModelConfig
 from .callbacks import MLFlowCallback, BestModelRestoreCallback
 from .initializers import FastTextInitializer
 import logging
 import mlflow
+import datetime
 
 
 class BaseEmbedding:
@@ -84,6 +86,7 @@ class BaseModel:
             return tf.distribute.get_strategy()
 
     def build(self, metadata: SequenceMetadata, knowledge: Any):
+        self.metadata = metadata
         self.strategy = self._select_distribute_strategy()
         logging.info(
             "Using strategy with %d workers", self.strategy.num_replicas_in_sync
@@ -99,9 +102,15 @@ class BaseModel:
                     ),
                     self.embedding_layer,
                     self._get_rnn_layer(),
-                    tf.keras.layers.Dense(len(metadata.y_vocab), activation="relu"),
+                    tf.keras.layers.Dense(len(metadata.y_vocab), activation=self._get_final_activation()),
                 ]
             )
+
+    def _get_final_activation(self):
+        if len(self.metadata.y_vocab) == 1:
+            return "sigmoid"
+        else:
+            return "relu"
 
     def _log_embedding_stats(self):
         mlflow.log_metric("num_features", self.embedding_layer.num_features)
@@ -128,10 +137,13 @@ class BaseModel:
         n_epochs: int,
     ):
         with self.strategy.scope():
-            if multilabel_classification:
+            if len(self.metadata.y_vocab) == 1:
+                self._compile_singleclass()
+            elif multilabel_classification:
                 self._compile_multilabel()
             else:
-                self._compile_multiclass()
+                self._compile_multiclass(train_dataset)
+            logging.debug(self.prediction_model.summary())
 
             self.history = self.prediction_model.fit(
                 train_dataset,
@@ -146,6 +158,20 @@ class BaseModel:
                 ],
             )
 
+    def _compile_singleclass(self):
+        self.metrics = [
+            tf.keras.metrics.Accuracy(),
+            tf.keras.metrics.BinaryAccuracy(),
+            tf.keras.metrics.Precision(),
+            tf.keras.metrics.Recall(),
+            tf.keras.metrics.AUC(),
+        ]
+        self.prediction_model.compile(
+            loss=tf.keras.losses.BinaryCrossentropy(),
+            optimizer=tf.optimizers.Adam(),
+            metrics=self.metrics,
+        )
+
     def _compile_multilabel(self):
         self.metrics = [
             MulticlassAccuracy(),
@@ -158,7 +184,8 @@ class BaseModel:
             metrics=self.metrics,
         )
 
-    def _compile_multiclass(self):
+    def _compile_multiclass(self, train_dataset: tf.data.Dataset):
+        metric_helper = PercentileSubsetMetricHelper(train_dataset, num_percentiles=self.config.metrics_num_percentiles, y_vocab=self.metadata.y_vocab)
         self.metrics = [
             tf.keras.metrics.CategoricalAccuracy(),
             tf.keras.metrics.TopKCategoricalAccuracy(
@@ -171,6 +198,9 @@ class BaseModel:
                 k=20, name="top_20_categorical_accuracy"
             ),
         ]
+        for k in [5, 10, 20]:
+            self.metrics = self.metrics + metric_helper.get_accuracy_at_k_for_percentiles(k=k)
+
         self.prediction_model.compile(
             loss=tf.keras.losses.CategoricalCrossentropy(),
             optimizer=tf.optimizers.Adam(),

@@ -19,6 +19,7 @@ class ModelConfig:
     distribute_strategy: str = ""
     best_model_metric: str = "val_loss"
     best_model_metric_minimize: bool = True
+    metrics_num_percentiles: int = 5
 
 @dataclass_cli.add
 @dataclasses.dataclass

@@ -65,9 +65,7 @@ class CausalityEmbedding(tf.keras.Model, BaseEmbedding):
             node = causality.nodes[idx]
             connected_idxs = set(node.get_neighbour_label_idxs() + [idx])
             self.connections[idx] = sorted(list(connected_idxs))
-            self.connection_partition = self.connection_partition + [
-                idx for _ in range(len(connected_idxs))
-            ]
+            self.connection_partition = self.connection_partition + [idx] * len(connected_idxs)
 
         self.connection_indices = [
             v for _, v in sorted(self.connections.items(), key=lambda x: x[0])
