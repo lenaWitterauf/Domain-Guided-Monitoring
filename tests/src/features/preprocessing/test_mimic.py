@@ -9,7 +9,8 @@ class TestMimic(unittest.TestCase):
     def test_mimic_preprocessing(self):
         fixture = MimicPreprocessor(
             admission_file=Path('tests/resources/test_mimic_admissions.csv'),
-            diagnosis_file=Path('tests/resources/test_mimic_diagnoses.csv')
+            diagnosis_file=Path('tests/resources/test_mimic_diagnoses.csv'),
+            add_icd9_info_to_sequences=False,
         )
 
         expected_aggregated_visits = pd.DataFrame(
@@ -32,6 +33,8 @@ class TestMimic(unittest.TestCase):
         aggregated_df = fixture.load_data()
         aggregated_df['str_visits'] = aggregated_df['icd9_code'].apply(lambda x: transform_to_string(x))
 
+        print(expected_aggregated_visits[['subject_id', 'str_visits']])
+        print(aggregated_df[['subject_id', 'str_visits']])
         pd.testing.assert_frame_equal(
             expected_aggregated_visits[['subject_id', 'str_visits']],
             aggregated_df[['subject_id', 'str_visits']],

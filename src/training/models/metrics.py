@@ -170,7 +170,7 @@ class PercentileSubsetMetricHelper:
             100 * i / self.num_percentiles for i in range(self.num_percentiles + 1)
         ]
         self.percentiles = np.percentile(self.frequency_ranks, self.percentile_steps)
-        self.percentiles[0] = 0
+        self.percentiles[0] = -1
 
     def _log_percentile_mapping_to_mlflow(self):
         percentile_mapping = self._create_percentile_mapping()

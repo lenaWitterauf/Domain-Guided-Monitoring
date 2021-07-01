@@ -211,8 +211,6 @@ class MimicPreprocessor(Preprocessor):
                 "icd9_code",
                 "icd9_code_converted",
                 "icd9_code_converted_3digits",
-                "icd9_code_name",
-                "icd9_code_name_3digits",
             ]
         )
 
@@ -276,6 +274,10 @@ class MimicPreprocessor(Preprocessor):
             left_on="icd9_code_converted_3digits",
             right_on="child_code",
         )["child_name"].fillna(diagnosis_df["icd9_code_converted_3digits"])
+        self.aggregation_column_names.update([
+                "icd9_code_name",
+                "icd9_code_name_3digits",
+        ])
 
         icd9_hierarchy_df = icd9_preprocessor.load_data_as_hierarchy()
         self.aggregation_column_names.update(icd9_hierarchy_df.columns)
