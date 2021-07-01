@@ -3,3 +3,4 @@ from .mimic import MimicPreprocessor, MimicPreprocessorConfig, CCSHierarchyPrepr
 from .huawei import ConcurrentAggregatedLogsPreprocessor, HuaweiPreprocessorConfig, ConcurrentAggregatedLogsDescriptionPreprocessor, ConcurrentAggregatedLogsHierarchyPreprocessor, ConcurrentAggregatedLogsCausalityPreprocessor
 from .base import Preprocessor
 from .icd9data import ICD9DataPreprocessor, ICD9KnowlifeMatcher
+from .c24 import C24FraudPreprocessor, C24HierarchyPreprocessor, C24PreprocessorConfig
