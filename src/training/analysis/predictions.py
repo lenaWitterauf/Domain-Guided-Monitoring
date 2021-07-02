@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from typing import Dict, List
 
 from ...features.sequences import SequenceMetadata
 
@@ -19,61 +20,70 @@ class PredictionOutputCalculator:
         prediction_output_df.to_csv(out_file_name, index=False)
 
     def _calculate_prediction_output_for_dataset(self, dataset: tf.data.Dataset) -> np.array:
-        prediction_df = pd.DataFrame(columns=['input', 'output', 'output_rank'])
+        all_prediction_dfs = []
         for (x, y) in tqdm(
-            dataset.as_numpy_iterator(), desc="Calculating x frequencies..."
+            dataset.as_numpy_iterator(), desc="Calculating prediction outputs..."
         ):
             x_words = self._transform_to_words_x(x)
             y_words = self._transform_to_words_y(y)
             y_pred = self.model(x).numpy()
             label_ranks = self._calculate_label_ranks(y, y_pred)
-            prediction_df = prediction_df.append(
+            all_prediction_dfs.append(
                 pd.DataFrame({
                     'input': x_words, 
                     'output': y_words,
                     'output_rank': label_ranks,
-                }), ignore_index=True,
+                })
             )
 
-        return prediction_df
+        return pd.concat(all_prediction_dfs, ignore_index=True)
 
     def _calculate_label_ranks(self, y_true: tf.Tensor, y_pred: tf.Tensor):
+        ranks_per_idx: Dict[int, List[int]] = {idx:[] for idx in range(y_true.shape[0])}
         all_ranks = np.argsort(y_pred, axis=-1).argsort(axis=-1)
-        label_ranks = []
-        for batch_idx in range(y_true.shape[0]):
-            y_batch = y_true[batch_idx]
-            batch_ranks = []
-            for idx in range(y_batch.shape[0]):
-                if y_batch[idx] == 1:
-                    batch_ranks.append(all_ranks[batch_idx][idx])
-            label_ranks.append(batch_ranks)
-        return label_ranks
-    
-    def _transform_to_words_x(self, x: tf.Tensor):
-        all_batch_words = []
-        for batch_idx in range(x.shape[0]):
-            x_batch = x[batch_idx]
-            batch_words = []
-            for sequence_idx in range(x_batch.shape[0]):
-                x_sequence = x_batch[sequence_idx]
-                sequence_words = []
-                for idx in range(x_sequence.shape[0]):
-                    if x_sequence[idx] == 1:
-                        sequence_words.append([word for (word, word_idx) in self.x_vocab.items() if word_idx == idx])
-                if len(sequence_words) > 0: batch_words.append(sequence_words)
-            all_batch_words.append(batch_words)
+        all_indices = np.argwhere(y_true == 1)
+        for idx in range(all_indices.shape[0]):
+            indices = all_indices[idx]
+            batch_idx = indices[0]
+            feature_idx = indices[1]
 
-        return all_batch_words # shape: (batch_size, sequence_length, words_per_step)
+            if batch_idx not in ranks_per_idx:
+                ranks_per_idx[batch_idx] = []
+            
+            ranks_per_idx[batch_idx].append(all_ranks[batch_idx][feature_idx])
+
+        return [ranks for _,ranks in sorted(ranks_per_idx.items(), key=lambda x: x[0])]
+    
+    def _transform_to_words_x(self, x: tf.Tensor) -> List[Dict[int, List[str]]]:
+        words_per_idx: Dict[int, Dict[int, List[str]]] = {idx:{} for idx in range(x.shape[0])}
+        all_indices = np.argwhere(x == 1)
+        for idx in range(all_indices.shape[0]):
+            indices = all_indices[idx]
+            batch_idx = indices[0]
+            sequence_idx = indices[1]
+            feature_idx = indices[2]
+
+            if batch_idx not in words_per_idx:
+                words_per_idx[batch_idx] = {}
+            if sequence_idx not in words_per_idx[batch_idx]:
+                words_per_idx[batch_idx][sequence_idx] = []
+            
+            words_per_idx[batch_idx][sequence_idx].append([word for word,idx in self.x_vocab.items() if idx==feature_idx][0])
+
+        return [words for _,words in sorted(words_per_idx.items(), key=lambda x: x[0])]
 
     def _transform_to_words_y(self, y: tf.Tensor):
-        all_batch_words = []
-        for batch_idx in range(y.shape[0]):
-            y_batch = y[batch_idx]
-            batch_words = []
-            for idx in range(y_batch.shape[0]):
-                if y_batch[idx] == 1:
-                    batch_words.append([word for (word, word_idx) in self.y_vocab.items() if word_idx == idx])
-            all_batch_words.append(batch_words)
+        words_per_idx: Dict[int, List[str]] = {idx:[] for idx in range(y.shape[0])}
+        all_indices = np.argwhere(y == 1)
+        for idx in range(all_indices.shape[0]):
+            indices = all_indices[idx]
+            batch_idx = indices[0]
+            feature_idx = indices[1]
 
-        return all_batch_words # shape: (batch_size, labels_per_prediction)
+            if batch_idx not in words_per_idx:
+                words_per_idx[batch_idx] = []
+            
+            words_per_idx[batch_idx].append([word for word,idx in self.y_vocab.items() if idx==feature_idx][0])
+
+        return [words for _,words in sorted(words_per_idx.items(), key=lambda x: x[0])]
 
