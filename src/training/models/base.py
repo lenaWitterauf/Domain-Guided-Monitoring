@@ -143,7 +143,10 @@ class BaseModel:
                 self._compile_multilabel()
             else:
                 self._compile_multiclass(train_dataset)
-            logging.debug(self.prediction_model.summary())
+
+            model_summary = []
+            self.prediction_model.summary(print_fn=lambda x: model_summary.append(x))
+            mlflow.log_text("\n".join(model_summary), artifact_file='model_summary.txt')
 
             self.history = self.prediction_model.fit(
                 train_dataset,
