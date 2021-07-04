@@ -11,8 +11,8 @@ from src.training.analysis import predictions
 class TestPredictionOutputCalculator(unittest.TestCase):
     def test_prediction_output(self):
         x = [[[0, 1, 1], [0, 1, 0]], [[1, 0, 0], [0, 0, 0]], [[0, 0, 0], [0, 0, 0]]]
-        y = [[0, 1], [0, 1], [1, 0]]
-        y_pred = [[0.1, 0.2], [0.2, 0.1], [0.1, 0.2]]
+        y = [[0, 1, 0, 0], [0, 0, 1, 0], [1, 0, 0, 0]]
+        y_pred = [[0.1, 0.2, 0.3, 0.4], [0.2, 0.4, 0.1, 0.3], [0.4, 0.3, 0.2, 0.1]]
         x_vocab = {
             "x0": 0,
             "x1": 1,
@@ -21,6 +21,8 @@ class TestPredictionOutputCalculator(unittest.TestCase):
         y_vocab = {
             "y0": 0,
             "y1": 1,
+            "y2": 2,
+            "y3": 3,
         }
 
         model = NoopModel(expected_output=y_pred)
@@ -28,8 +30,13 @@ class TestPredictionOutputCalculator(unittest.TestCase):
         expected_df = pd.DataFrame(
             {
                 "input": [{0: ["x1", "x2"], 1: ["x1"]}, {0: ["x0"]}, {},],
-                "output": [["y1"], ["y1"], ["y0"],],
-                "output_rank": [[1], [0], [0],],
+                "output": [["y1"], ["y2"], ["y0"],],
+                "output_rank": [[1], [0], [3],],
+                "predictions": [
+                    {"y0": 0.1, "y1": 0.2, "y2": 0.3, "y3": 0.4,},
+                    {"y0": 0.2, "y1": 0.4, "y2": 0.1, "y3": 0.3,},
+                    {"y0": 0.4, "y1": 0.3, "y2": 0.2, "y3": 0.1,},
+                ],
             }
         )
 

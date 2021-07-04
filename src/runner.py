@@ -82,12 +82,8 @@ class ExperimentRunner:
         self._generate_metric_artifacts(artifact_dir, model)
         self._generate_embedding_artifacts(artifact_dir, metadata, knowledge, model)
         self._generate_confusion_artifacts(
-            artifact_dir, metadata, model, train_dataset, test_dataset
+            artifact_dir, metadata, model, test_dataset
         )
-        self._generate_frequency_artifacts(
-            artifact_dir, metadata, model, train_dataset, test_dataset
-        )
-
         mlflow.log_artifacts(artifact_dir)
 
     def _generate_metric_artifacts(
@@ -96,22 +92,13 @@ class ExperimentRunner:
         metric_plotter = analysis.MetricPlotter(model, plot_path=artifact_dir)
         metric_plotter.plot_all_metrics()
 
-    def _generate_frequency_artifacts(
+    def _generate_confusion_artifacts(
         self,
         artifact_dir: str,
         metadata: sequences.SequenceMetadata,
         model: models.BaseModel,
-        train_dataset: tf.data.Dataset,
         test_dataset: tf.data.Dataset,
     ):
-        frequency_calculator = analysis.FrequencyCalculator(metadata,)
-        frequency_calculator.write_frequency_for_dataset(
-            train_dataset, out_file_name=artifact_dir + "frequency_train.csv",
-        )
-        frequency_calculator.write_frequency_for_dataset(
-            test_dataset, out_file_name=artifact_dir + "frequency_test.csv",
-        )
-
         prediction_output_calculator = analysis.PredictionOutputCalculator(
             metadata, model.prediction_model,
         )
@@ -119,29 +106,8 @@ class ExperimentRunner:
             test_dataset, out_file_name=artifact_dir + "prediction_output.csv",
         )
 
-    def _generate_confusion_artifacts(
-        self,
-        artifact_dir: str,
-        metadata: sequences.SequenceMetadata,
-        model: models.BaseModel,
-        train_dataset: tf.data.Dataset,
-        test_dataset: tf.data.Dataset,
-    ):
-        if self.multilabel_classification:
-            logging.error(
-                "Can't create confusion matrix for multilabel classification!"
-            )
-            return
-
-        confusion_calculator = analysis.ConfusionCalculator(
-            metadata, model.prediction_model
-        )
-        confusion_calculator.write_confusion_for_dataset(
-            train_dataset, out_file_name=artifact_dir + "confusion_train.csv"
-        )
-        confusion_calculator.write_confusion_for_dataset(
-            test_dataset, out_file_name=artifact_dir + "confusion_test.csv"
-        )
+        mlflow.log_dict(metadata.x_vocab, 'x_vocab.json')
+        mlflow.log_dict(metadata.y_vocab, 'y_vocab.json')
 
     def _generate_embedding_artifacts(
         self,
