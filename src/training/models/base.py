@@ -102,15 +102,9 @@ class BaseModel:
                     ),
                     self.embedding_layer,
                     self._get_rnn_layer(),
-                    tf.keras.layers.Dense(len(metadata.y_vocab), activation=self._get_final_activation()),
+                    tf.keras.layers.Dense(len(metadata.y_vocab), activation=self.config.final_activation_function),
                 ]
             )
-
-    def _get_final_activation(self):
-        if len(self.metadata.y_vocab) == 1:
-            return "sigmoid"
-        else:
-            return "relu"
 
     def _log_embedding_stats(self):
         mlflow.log_metric("num_features", self.embedding_layer.num_features)
@@ -170,7 +164,7 @@ class BaseModel:
             tf.keras.metrics.AUC(),
         ]
         self.prediction_model.compile(
-            loss=tf.keras.losses.BinaryCrossentropy(),
+            loss=self.config.loss,
             optimizer=tf.optimizers.Adam(),
             metrics=self.metrics,
         )
@@ -182,7 +176,7 @@ class BaseModel:
             MulticlassTruePositiveRate(),
         ]
         self.prediction_model.compile(
-            loss=tf.keras.losses.BinaryCrossentropy(),
+            loss=self.config.loss,
             optimizer=tf.optimizers.Adam(),
             metrics=self.metrics,
         )
@@ -205,7 +199,7 @@ class BaseModel:
             self.metrics = self.metrics + metric_helper.get_accuracy_at_k_for_percentiles(k=k)
 
         self.prediction_model.compile(
-            loss=tf.keras.losses.CategoricalCrossentropy(),
+            loss=self.config.loss,
             optimizer=tf.optimizers.Adam(),
             metrics=self.metrics,
         )

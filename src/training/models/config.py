@@ -20,11 +20,13 @@ class ModelConfig:
     best_model_metric: str = "val_loss"
     best_model_metric_minimize: bool = True
     metrics_num_percentiles: int = 5
+    final_activation_function: str = "softmax"
+    loss: str = "binary_crossentropy"
+
 
 @dataclass_cli.add
 @dataclasses.dataclass
 class TextualPaperModelConfig:
     num_filters: int = 16
-    kernel_sizes: List[int] = dataclasses.field(
-        default_factory=lambda: [2, 3, 4],
-    )           
+    kernel_sizes: List[int] = dataclasses.field(default_factory=lambda: [2, 3, 4],)
+
