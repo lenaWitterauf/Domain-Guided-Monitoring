@@ -335,6 +335,8 @@ class NextSequenceTransformer:
         vocab = {}
         index = 0
         for feature in features:
+            if len(feature) == 0 or feature.lower() == 'nan':
+                continue
             vocab[feature] = index
             index = index + 1
 

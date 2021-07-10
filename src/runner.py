@@ -81,9 +81,7 @@ class ExperimentRunner:
 
         self._generate_metric_artifacts(artifact_dir, model)
         self._generate_embedding_artifacts(artifact_dir, metadata, knowledge, model)
-        self._generate_confusion_artifacts(
-            artifact_dir, metadata, model, test_dataset
-        )
+        self._generate_confusion_artifacts(artifact_dir, metadata, model, test_dataset)
         mlflow.log_artifacts(artifact_dir)
 
     def _generate_metric_artifacts(
@@ -106,8 +104,8 @@ class ExperimentRunner:
             test_dataset, out_file_name=artifact_dir + "prediction_output.csv",
         )
 
-        mlflow.log_dict(metadata.x_vocab, 'x_vocab.json')
-        mlflow.log_dict(metadata.y_vocab, 'y_vocab.json')
+        mlflow.log_dict(metadata.x_vocab, "x_vocab.json")
+        mlflow.log_dict(metadata.y_vocab, "y_vocab.json")
 
     def _generate_embedding_artifacts(
         self,
@@ -252,8 +250,8 @@ class ExperimentRunner:
             )
             return description_knowledge
         elif self.config.sequence_type == "huawei_logs":
-            description_preprocessor = (
-                preprocessing.ConcurrentAggregatedLogsDescriptionPreprocessor()
+            description_preprocessor = preprocessing.ConcurrentAggregatedLogsDescriptionPreprocessor(
+                preprocessing.HuaweiPreprocessorConfig()
             )
             description_df = description_preprocessor.load_data()
             description_knowledge = knowledge.DescriptionKnowledge()
@@ -315,8 +313,8 @@ class ExperimentRunner:
             hierarchy.build_hierarchy_from_df(hierarchy_df, metadata.x_vocab)
             return hierarchy
         elif self.config.sequence_type == "huawei_logs":
-            hierarchy_preprocessor = (
-                preprocessing.ConcurrentAggregatedLogsHierarchyPreprocessor()
+            hierarchy_preprocessor = preprocessing.ConcurrentAggregatedLogsHierarchyPreprocessor(
+                preprocessing.HuaweiPreprocessorConfig()
             )
             hierarchy_df = hierarchy_preprocessor.load_data()
             hierarchy = knowledge.HierarchyKnowledge()
@@ -354,10 +352,7 @@ class ExperimentRunner:
         elif self.config.sequence_type == "huawei_logs":
             huawei_config = preprocessing.HuaweiPreprocessorConfig()
             sequence_preprocessor = preprocessing.ConcurrentAggregatedLogsPreprocessor(
-                log_file=huawei_config.aggregated_log_file,
-                relevant_columns=huawei_config.relevant_aggregated_log_columns,
-                datetime_column_name=huawei_config.datetime_column_name,
-                max_sequence_length=huawei_config.max_sequence_length,
+                huawei_config,
             )
             self.sequence_column_name = sequence_preprocessor.sequence_column_name
             return sequence_preprocessor.load_data()
