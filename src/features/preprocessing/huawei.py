@@ -91,8 +91,10 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
     def _load_log_only_data(self) -> pd.DataFrame:
         log_df = self._read_log_df()
         log_df = self._add_url_drain_clusters(log_df)
-        log_df["log_cluster_template"] = log_df["log_cluster_template"].fillna("").apply(
-            lambda x: x if len(x) > 0 else "___empty___"
+        log_df["log_cluster_template"] = (
+            log_df["log_cluster_template"]
+            .fillna("")
+            .apply(lambda x: x if len(x) > 0 else "___empty___")
         )
         log_df["grouper"] = 1
         return self._aggregate_per(log_df, aggregation_column="grouper")
@@ -302,12 +304,17 @@ class ConcurrentAggregatedLogsDescriptionPreprocessor(Preprocessor):
 
     def load_data(self) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
-        huawei_df = preprocessor.load_full_data()
+        huawei_df = preprocessor._read_log_df()
+        huawei_df = preprocessor._add_url_drain_clusters(huawei_df)
+        return self._load_column_descriptions(huawei_df, preprocessor.relevant_columns)
 
+    def _load_column_descriptions(
+        self, huawei_df: pd.DataFrame, relevant_columns: Set[str]
+    ) -> pd.DataFrame:
         http_descriptions = self._load_http_descriptions()
         column_descriptions = self._get_column_descriptions()
         description_df = pd.DataFrame(columns=["label", "description"])
-        for column in preprocessor.relevant_columns:
+        for column in relevant_columns:
             values = set(huawei_df[column].dropna())
             values = set([str(x).lower() for x in values if len(str(x)) > 0])
             for value in tqdm(values, desc="Loading descriptions for column " + column):
