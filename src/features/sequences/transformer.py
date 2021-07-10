@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Generator
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from .config import SequenceConfig
@@ -180,13 +180,13 @@ class NextSequenceTransformer:
             for splitted_sequence in splitted_sequences:
                 yield splitted_sequence
 
-    def _split_sequence(self, sequence: List[List[str]]):
+    def _split_sequence(self, sequence: List[List[str]]) -> Generator[_SplittedSequence, None, None]:
         if self.window_overlap:
             return self._split_sequence_overlap(sequence)
         else:
             return self._split_sequence_no_overlap(sequence)
 
-    def _split_sequence_overlap(self, sequence: List[List[str]]):
+    def _split_sequence_overlap(self, sequence: List[List[str]]) -> Generator[_SplittedSequence, None, None]:
         for start_index in range(0, len(sequence)):
             max_end_index = min(start_index + self.max_window_size + 1, len(sequence))
             min_end_index = (
@@ -206,7 +206,7 @@ class NextSequenceTransformer:
                 for splitted_sequence in splitted_sequences:
                     yield splitted_sequence
 
-    def _split_sequence_no_overlap(self, sequence: List[List[str]]):
+    def _split_sequence_no_overlap(self, sequence: List[List[str]]) -> Generator[_SplittedSequence, None, None]:
         start_index = 0
         max_start_index = len(sequence) - 1 - self.min_window_size
         while start_index <= max_start_index:
@@ -298,15 +298,9 @@ class NextSequenceTransformer:
     def _translate_and_pad(
         self, splitted: _SplittedSequence, metadata: SequenceMetadata
     ):
-        splitted.y_vec = self._transform_to_tensor(splitted.y, metadata.y_vocab)
-        if self.flatten_x:
-            splitted.x_vecs_stacked = self._translate_and_pad_x_flat(
-                splitted.x, metadata.x_vocab, metadata.max_sequence_length
-            )
-        else:
-            splitted.x_vecs_stacked = self._translate_and_pad_x_wide(
-                splitted.x, metadata.x_vocab, metadata.max_features_per_sequence
-            )
+        x_vecs_stacked, y_vec = self._translate_and_pad_generator(splitted.x, splitted.y, metadata)
+        splitted.x_vecs_stacked = x_vecs_stacked
+        splitted.y_vec = y_vec
 
     def _generate_vocabs(
         self, sequence_df: pd.DataFrame, sequence_column_name: str
@@ -355,6 +349,9 @@ class NextPartialSequenceTransformer(NextSequenceTransformer):
     def set_remove_empty_y_vecs(self, remove_empty_y_vecs: bool):
         self.remove_empty_y_vecs: bool = remove_empty_y_vecs
 
+    def set_remove_empty_x_vecs(self, remove_empty_x_vecs: bool):
+        self.remove_empty_x_vecs: bool = remove_empty_x_vecs
+
     def _generate_vocabs(
         self, sequence_df: pd.DataFrame, sequence_column_name: str
     ) -> Tuple[Dict[str, int], Dict[str, int]]:
@@ -371,16 +368,17 @@ class NextPartialSequenceTransformer(NextSequenceTransformer):
 
         return (x_vocab, y_vocab)
 
-    def _split_sequence(self, sequence: List[List[str]]):
+    def _split_sequence(self, sequence: List[List[str]]) -> Generator[_SplittedSequence, None, None]:
         splitted_sequence_generator = super()._split_sequence(sequence)
-        if self.remove_empty_y_vecs and len(self.valid_y_features) > 0:
-            return [
-                sequence
-                for sequence in splitted_sequence_generator
-                if not set(sequence.y).isdisjoint(self.valid_y_features)
-            ]
-        else:
-            return splitted_sequence_generator
+        should_remove_empty_y_vecs = self.remove_empty_y_vecs and len(self.valid_y_features) > 0
+        should_remove_empty_x_vecs = self.remove_empty_x_vecs and len(self.valid_x_features) > 0
+        for splitted_sequence in splitted_sequence_generator:
+            if should_remove_empty_y_vecs and set(splitted_sequence.y).isdisjoint(self.valid_y_features):
+                continue
+            if should_remove_empty_x_vecs:
+                splitted_sequence.x = [x for x in splitted_sequence.x if not set(x).isdisjoint(self.valid_x_features)]
+            if len(splitted_sequence.x) > 0:
+                yield splitted_sequence
 
 
 class NextPartialSequenceTransformerFromDataframe(NextPartialSequenceTransformer):
@@ -455,6 +453,7 @@ def load_sequence_transformer() -> NextSequenceTransformer:
         transformer.set_x_column_name(config.x_sequence_column_name)
         transformer.set_y_column_name(config.y_sequence_column_name)
         transformer.set_remove_empty_y_vecs(config.remove_empty_y_vecs)
+        transformer.set_remove_empty_x_vecs(config.remove_empty_x_vecs)
         return transformer
     else:
         return NextSequenceTransformer(
