@@ -391,25 +391,30 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
     def _load_log_hierarchy(
         self, huawei_df: pd.DataFrame, relevant_columns: Set[str]
     ) -> pd.DataFrame:
-        hierarchy_df = pd.DataFrame(
-            columns=["parent_id", "child_id", "parent_name", "child_name"]
-        )
-        for _, row in tqdm(huawei_df.iterrows(), desc="Adding huawei log hierarchy"):
+        hierarchy_records = []
+        for _, row in tqdm(
+            huawei_df.iterrows(),
+            desc="Adding huawei log hierarchy",
+            total=len(huawei_df),
+        ):
             log_template = str(row["log_cluster_template"]).lower()
             for column in relevant_columns:
                 if column == "log_cluster_template":
                     continue
 
-                hierarchy_df = hierarchy_df.append(
+                hierarchy_records.append(
                     {
                         "parent_id": column + "#" + str(row[column]).lower(),
                         "parent_name": column + "#" + str(row[column]).lower(),
                         "child_id": "log_cluster_template" + "#" + log_template,
                         "child_name": "log_cluster_template" + "#" + log_template,
                     },
-                    ignore_index=True,
                 )
-        return hierarchy_df.drop_duplicates().reset_index(drop=True)
+        return (
+            pd.DataFrame.from_records(hierarchy_records)
+            .drop_duplicates()
+            .reset_index(drop=True)
+        )
 
     def _load_attribute_hierarchy(
         self, huawei_df: pd.DataFrame, relevant_columns: Set[str]
