@@ -5,7 +5,7 @@ import logging
 import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
-from typing import List, Dict
+from typing import List, Dict, Set
 import http
 import re
 from .base import Preprocessor
@@ -43,6 +43,8 @@ class HuaweiPreprocessorConfig:
             "function",
         ],
     )
+    use_trace_data: bool = False
+    aggregate_per_trace: bool = False
     log_datetime_column_name: str = "@timestamp"
     log_payload_column_name: str = "Payload"
     drain_log_depth: int = 10
@@ -61,21 +63,36 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
     def __init__(self, config: HuaweiPreprocessorConfig):
         self.config = config
         self.relevant_columns = set(
-            [
-                x
-                for x in self.config.relevant_aggregated_log_columns
-                + self.config.relevant_trace_columns
-            ]
+            [x for x in self.config.relevant_aggregated_log_columns]
         )
         self.relevant_columns.add("log_cluster_template")
         self.relevant_columns.add("url_cluster_template")
+        if self.config.use_trace_data:
+            self.relevant_columns.update(self.config.relevant_trace_columns)
 
     def load_data(self) -> pd.DataFrame:
+        if self.config.aggregate_per_trace:
+            return self._load_data_per_trace()
+        else:
+            return self._load_log_only_data()
+
+    def _load_data_per_trace(self) -> pd.DataFrame:
         full_df = self.load_full_data()
-        aggregated_df = self._aggregate_per_trace(full_df)
-        return aggregated_df[
-            aggregated_df["num_logs"] >= self.config.min_logs_per_trace
+        aggregated_df = self._aggregate_per(full_df)
+        aggregated_df = aggregated_df[
+            aggregated_df["num_events"] >= self.config.min_logs_per_trace
         ]
+        logging.info(
+            "Summary of num_events:\n %s",
+            aggregated_df["num_events"].describe().to_string(),
+        )
+        return aggregated_df
+
+    def _load_log_only_data(self) -> pd.DataFrame:
+        log_df = self._read_log_df()
+        log_df = self._add_url_drain_clusters(log_df)
+        log_df['grouper'] = 1
+        return self._aggregate_per(log_df, aggregation_column='grouper')
 
     def load_full_data(self) -> pd.DataFrame:
         logging.info(
@@ -93,8 +110,8 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
         merged_df = self._merge_logs_traces(log_df, trace_df)
         return self._add_url_drain_clusters(merged_df)
 
-    def _aggregate_per_trace(self, merged_df: pd.DataFrame) -> pd.DataFrame:
-        logging.debug("Aggregating huawei data per trace")
+    def _aggregate_per(self, merged_df: pd.DataFrame, aggregation_column: str = "parent_trace_id") -> pd.DataFrame:
+        logging.debug("Aggregating huawei data per %s", aggregation_column)
         for column in self.relevant_columns:
             merged_df[column] = (
                 merged_df[column]
@@ -106,14 +123,14 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
 
         merged_df["all_events"] = merged_df[self.relevant_columns].values.tolist()
         merged_df["attributes"] = merged_df[
-            [x for x in self.relevant_columns if x is not "log_cluster_template"]
+            [x for x in self.relevant_columns if x != "log_cluster_template"]
         ].values.tolist()
         merged_df["log_cluster_template"] = merged_df["log_cluster_template"].apply(
             lambda x: [x]
         )
         events_per_trace = (
             merged_df.sort_values(by="timestamp")
-            .groupby("parent_trace_id")
+            .groupby(aggregation_column)
             .agg(
                 {
                     column_name: lambda x: list(x)
@@ -129,15 +146,27 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
         events_per_trace["num_logs"] = events_per_trace["log_cluster_template"].apply(
             lambda x: len([loglist for loglist in x if len(loglist[0]) > 0])
         )
+        events_per_trace["num_events"] = events_per_trace["log_cluster_template"].apply(
+            lambda x: len(x)
+        )
         return events_per_trace[
-            ["num_logs", "all_events", "log_cluster_template", "attributes"]
+            [
+                "num_logs",
+                "num_events",
+                "all_events",
+                "log_cluster_template",
+                "attributes",
+            ]
         ]
 
     def _merge_logs_traces(self, log_df: pd.DataFrame, trace_df: pd.DataFrame):
         log_df_with_trace_id = self._match_logs_to_traces(log_df, trace_df)
-        return pd.concat(
-            [log_df_with_trace_id, trace_df], ignore_index=True
-        ).reset_index(drop=True)
+        if self.config.use_trace_data:
+            return pd.concat(
+                [log_df_with_trace_id, trace_df], ignore_index=True
+            ).reset_index(drop=True)
+        else:
+            return log_df_with_trace_id.reset_index(drop=True)
 
     def _match_logs_to_traces(self, log_df: pd.DataFrame, trace_df: pd.DataFrame):
         max_timestamp_by_trace = trace_df.groupby(by="parent_trace_id").agg(
@@ -333,12 +362,43 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
 
     def load_data(self) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
-        huawei_df = preprocessor.load_full_data()
+        huawei_df = preprocessor._read_log_df()
+        huawei_df = preprocessor._add_url_drain_clusters(huawei_df)
+        attribute_hierarchy = self._load_attribute_hierarchy(huawei_df, preprocessor.relevant_columns)
+        return attribute_hierarchy.append(self._load_log_hierarchy(
+            huawei_df, preprocessor.relevant_columns,
+        ), ignore_index=True).drop_duplicates().reset_index(drop=True)
 
+    def _load_log_hierarchy(self, huawei_df: pd.DataFrame, relevant_columns: Set[str]) -> pd.DataFrame:
         hierarchy_df = pd.DataFrame(
             columns=["parent_id", "child_id", "parent_name", "child_name"]
         )
-        for column in preprocessor.relevant_columns:
+        for _, row in tqdm(huawei_df.iterrows(), desc="Adding huawei log hierarchy"):
+            log_template = str(row["log_cluster_template"]).lower()
+            for column in relevant_columns:
+                if column == "log_cluster_template":
+                    continue
+                
+                hierarchy_df = hierarchy_df.append(
+                    {
+                        "parent_id": column + "#" + str(row[column]).lower(),
+                        "parent_name": column + "#" + str(row[column]).lower(),
+                        "child_id": "log_cluster_template" + "#" + log_template,
+                        "child_name": "log_cluster_template" + "#" + log_template,
+                    },
+                    ignore_index=True,
+                )
+        return hierarchy_df.drop_duplicates().reset_index(drop=True)
+
+
+    def _load_attribute_hierarchy(self, huawei_df: pd.DataFrame, relevant_columns: Set[str]) -> pd.DataFrame:
+        hierarchy_df = pd.DataFrame(
+            columns=["parent_id", "child_id", "parent_name", "child_name"]
+        )
+        for column in relevant_columns:
+            if column == "log_cluster_template":
+                continue
+
             hierarchy_df = hierarchy_df.append(
                 {
                     "parent_id": "root",
@@ -348,28 +408,23 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
                 },
                 ignore_index=True,
             )
-
-            values = set(huawei_df[column].dropna())
+            values = set([str(x).lower() for x in huawei_df[column].dropna() if len(str(x)) > 0 and str(x).lower() != "nan"])
             for value in tqdm(values, desc="Loading hierarchy for column " + column):
-                converted_value = str(value).lower()
-                if len(converted_value) == 0:
-                    continue
-
                 hierarchy_elements = [column]
                 if column == "Hostname":
-                    hierarchy_elements.append(converted_value.rstrip("0123456789"))
+                    hierarchy_elements.append(value.rstrip("0123456789"))
                 elif column == "http_status":
-                    hierarchy_elements.append(converted_value[0] + "00")
+                    hierarchy_elements.append(value[0] + "00")
                 elif "cluster" in column:
-                    hierarchy_elements = hierarchy_elements + converted_value.split()
+                    hierarchy_elements = hierarchy_elements + value.split()
                 else:
                     hierarchy_elements = hierarchy_elements + re.split(
-                        "[,._\-\*]+", converted_value
+                        "[,._\-\*]+", value
                     )
                     hierarchy_elements = [
                         x.strip() for x in hierarchy_elements if len(x.strip()) > 0
                     ]
-                if hierarchy_elements[len(hierarchy_elements) - 1] == converted_value:
+                if hierarchy_elements[len(hierarchy_elements) - 1] == value:
                     hierarchy_elements = hierarchy_elements[
                         : len(hierarchy_elements) - 1
                     ]
@@ -377,7 +432,7 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
                 hierarchy = []
                 for i in range(1, len(hierarchy_elements) + 1):
                     hierarchy.append("->".join(hierarchy_elements[0:i]))
-                hierarchy.append(column + "#" + converted_value)
+                hierarchy.append(column + "#" + value)
 
                 parent_id = column
                 parent_name = column
