@@ -306,6 +306,11 @@ class ConcurrentAggregatedLogsDescriptionPreprocessor(Preprocessor):
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
         huawei_df = preprocessor._read_log_df()
         huawei_df = preprocessor._add_url_drain_clusters(huawei_df)
+        huawei_df["log_cluster_template"] = (
+            huawei_df["log_cluster_template"]
+            .fillna("")
+            .apply(lambda x: x if len(x) > 0 else "___empty___")
+        )
         return self._load_column_descriptions(huawei_df, preprocessor.relevant_columns)
 
     def _load_column_descriptions(
@@ -376,6 +381,11 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
         huawei_df = preprocessor._read_log_df()
         huawei_df = preprocessor._add_url_drain_clusters(huawei_df)
+        huawei_df["log_cluster_template"] = (
+            huawei_df["log_cluster_template"]
+            .fillna("")
+            .apply(lambda x: x if len(x) > 0 else "___empty___")
+        )
         attribute_hierarchy = self._load_attribute_hierarchy(
             huawei_df, preprocessor.relevant_columns
         )
