@@ -91,8 +91,11 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
     def _load_log_only_data(self) -> pd.DataFrame:
         log_df = self._read_log_df()
         log_df = self._add_url_drain_clusters(log_df)
-        log_df['grouper'] = 1
-        return self._aggregate_per(log_df, aggregation_column='grouper')
+        log_df["log_cluster_template"] = log_df["log_cluster_template"].fillna("").apply(
+            lambda x: x if len(x) > 0 else "___empty___"
+        )
+        log_df["grouper"] = 1
+        return self._aggregate_per(log_df, aggregation_column="grouper")
 
     def load_full_data(self) -> pd.DataFrame:
         logging.info(
@@ -110,7 +113,9 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
         merged_df = self._merge_logs_traces(log_df, trace_df)
         return self._add_url_drain_clusters(merged_df)
 
-    def _aggregate_per(self, merged_df: pd.DataFrame, aggregation_column: str = "parent_trace_id") -> pd.DataFrame:
+    def _aggregate_per(
+        self, merged_df: pd.DataFrame, aggregation_column: str = "parent_trace_id"
+    ) -> pd.DataFrame:
         logging.debug("Aggregating huawei data per %s", aggregation_column)
         for column in self.relevant_columns:
             merged_df[column] = (
@@ -364,12 +369,21 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
         huawei_df = preprocessor._read_log_df()
         huawei_df = preprocessor._add_url_drain_clusters(huawei_df)
-        attribute_hierarchy = self._load_attribute_hierarchy(huawei_df, preprocessor.relevant_columns)
-        return attribute_hierarchy.append(self._load_log_hierarchy(
-            huawei_df, preprocessor.relevant_columns,
-        ), ignore_index=True).drop_duplicates().reset_index(drop=True)
+        attribute_hierarchy = self._load_attribute_hierarchy(
+            huawei_df, preprocessor.relevant_columns
+        )
+        return (
+            attribute_hierarchy.append(
+                self._load_log_hierarchy(huawei_df, preprocessor.relevant_columns,),
+                ignore_index=True,
+            )
+            .drop_duplicates()
+            .reset_index(drop=True)
+        )
 
-    def _load_log_hierarchy(self, huawei_df: pd.DataFrame, relevant_columns: Set[str]) -> pd.DataFrame:
+    def _load_log_hierarchy(
+        self, huawei_df: pd.DataFrame, relevant_columns: Set[str]
+    ) -> pd.DataFrame:
         hierarchy_df = pd.DataFrame(
             columns=["parent_id", "child_id", "parent_name", "child_name"]
         )
@@ -378,7 +392,7 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
             for column in relevant_columns:
                 if column == "log_cluster_template":
                     continue
-                
+
                 hierarchy_df = hierarchy_df.append(
                     {
                         "parent_id": column + "#" + str(row[column]).lower(),
@@ -390,8 +404,9 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
                 )
         return hierarchy_df.drop_duplicates().reset_index(drop=True)
 
-
-    def _load_attribute_hierarchy(self, huawei_df: pd.DataFrame, relevant_columns: Set[str]) -> pd.DataFrame:
+    def _load_attribute_hierarchy(
+        self, huawei_df: pd.DataFrame, relevant_columns: Set[str]
+    ) -> pd.DataFrame:
         hierarchy_df = pd.DataFrame(
             columns=["parent_id", "child_id", "parent_name", "child_name"]
         )
@@ -408,7 +423,13 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
                 },
                 ignore_index=True,
             )
-            values = set([str(x).lower() for x in huawei_df[column].dropna() if len(str(x)) > 0 and str(x).lower() != "nan"])
+            values = set(
+                [
+                    str(x).lower()
+                    for x in huawei_df[column].dropna()
+                    if len(str(x)) > 0 and str(x).lower() != "nan"
+                ]
+            )
             for value in tqdm(values, desc="Loading hierarchy for column " + column):
                 hierarchy_elements = [column]
                 if column == "Hostname":
