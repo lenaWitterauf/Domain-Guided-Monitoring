@@ -74,7 +74,9 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
         if self.config.aggregate_per_trace:
             return self._load_data_per_trace()
         else:
-            return self._load_log_only_data()
+            log_only_data = self._load_log_only_data()
+            log_only_data["grouper"] = 1
+            return self._aggregate_per(log_only_data, aggregation_column="grouper")
 
     def _load_data_per_trace(self) -> pd.DataFrame:
         full_df = self.load_full_data()
@@ -94,10 +96,11 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
         log_df["log_cluster_template"] = (
             log_df["log_cluster_template"]
             .fillna("")
+            .astype(str)
+            .replace(np.nan, "", regex=True)
             .apply(lambda x: x if len(x) > 0 else "___empty___")
         )
-        log_df["grouper"] = 1
-        return self._aggregate_per(log_df, aggregation_column="grouper")
+        return log_df
 
     def load_full_data(self) -> pd.DataFrame:
         logging.info(
@@ -120,12 +123,8 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
     ) -> pd.DataFrame:
         logging.debug("Aggregating huawei data per %s", aggregation_column)
         for column in self.relevant_columns:
-            merged_df[column] = (
-                merged_df[column]
-                .replace(np.nan, "", regex=True)
-                .astype(str)
-                .fillna("")
-                .apply(lambda x: column + "#" + x.lower() if len(x) > 0 else "")
+            merged_df[column] = merged_df[column].apply(
+                lambda x: column + "#" + x.lower() if len(x) > 0 else ""
             )
 
         merged_df["all_events"] = merged_df[self.relevant_columns].values.tolist()
@@ -211,7 +210,12 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
         return trace_df
 
     def _read_log_df(self) -> pd.DataFrame:
-        df = pd.read_csv(self.config.aggregated_log_file)
+        df = (
+            pd.read_csv(self.config.aggregated_log_file)
+            .fillna("")
+            .astype(str)
+            .replace(np.nan, "", regex=True)
+        )
         rel_df = df[
             self.config.relevant_aggregated_log_columns
             + [self.config.log_datetime_column_name]
@@ -225,7 +229,9 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
         return rel_df
 
     def _add_url_drain_clusters(self, df: pd.DataFrame) -> pd.DataFrame:
-        url_df = pd.DataFrame(df[self.config.url_column_name].dropna())
+        url_df = pd.DataFrame(
+            df[self.config.url_column_name].dropna().drop_duplicates()
+        )
         drain = Drain(
             DrainParameters(
                 depth=self.config.drain_url_depth,
@@ -236,12 +242,18 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             data_df_column_name=self.config.url_column_name,
         )
         drain_result_df = (
-            drain.load_data().set_index("log_idx").drop_duplicates(ignore_index=False)
+            drain.load_data().drop_duplicates(ignore_index=False).set_index("log_idx")
         )
-        return (
+        url_result_df = (
             pd.merge(
                 df,
-                pd.merge(url_df, drain_result_df, left_index=True, right_index=True,)
+                pd.merge(
+                    url_df,
+                    drain_result_df,
+                    left_index=True,
+                    right_index=True,
+                    how="left",
+                )
                 .drop_duplicates()
                 .reset_index(drop=True),
                 on=self.config.url_column_name,
@@ -255,9 +267,18 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             )
             .drop(columns=["cluster_id"])
         )
+        url_result_df["url_cluster_template"] = (
+            url_result_df["url_cluster_template"]
+            .fillna("")
+            .astype(str)
+            .replace(np.nan, "", regex=True)
+        )
+        return url_result_df
 
     def _add_log_drain_clusters(self, log_df: pd.DataFrame) -> pd.DataFrame:
-        all_logs_df = pd.DataFrame(log_df[self.config.log_payload_column_name].dropna())
+        all_logs_df = pd.DataFrame(
+            log_df[self.config.log_payload_column_name].dropna().drop_duplicates()
+        )
         drain = Drain(
             DrainParameters(
                 depth=self.config.drain_log_depth,
@@ -272,14 +293,16 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             data_df=all_logs_df,
             data_df_column_name=self.config.log_payload_column_name,
         )
-        drain_result_df = (
-            drain.load_data().set_index("log_idx").drop_duplicates(ignore_index=False)
-        )
-        return (
+        drain_result_df = drain.load_data().drop_duplicates().set_index("log_idx")
+        log_result_df = (
             pd.merge(
                 log_df,
                 pd.merge(
-                    all_logs_df, drain_result_df, left_index=True, right_index=True,
+                    all_logs_df,
+                    drain_result_df,
+                    left_index=True,
+                    right_index=True,
+                    how="left",
                 )
                 .drop_duplicates()
                 .reset_index(drop=True),
@@ -294,6 +317,13 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             )
             .drop(columns=["cluster_id"])
         )
+        log_result_df["log_cluster_template"] = (
+            log_result_df["log_cluster_template"]
+            .fillna("")
+            .astype(str)
+            .replace(np.nan, "", regex=True)
+        )
+        return log_result_df
 
 
 class ConcurrentAggregatedLogsDescriptionPreprocessor(Preprocessor):
@@ -304,13 +334,7 @@ class ConcurrentAggregatedLogsDescriptionPreprocessor(Preprocessor):
 
     def load_data(self) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
-        huawei_df = preprocessor._read_log_df()
-        huawei_df = preprocessor._add_url_drain_clusters(huawei_df)
-        huawei_df["log_cluster_template"] = (
-            huawei_df["log_cluster_template"]
-            .fillna("")
-            .apply(lambda x: x if len(x) > 0 else "___empty___")
-        )
+        huawei_df = preprocessor._load_log_only_data()
         return self._load_column_descriptions(huawei_df, preprocessor.relevant_columns)
 
     def _load_column_descriptions(
@@ -320,7 +344,9 @@ class ConcurrentAggregatedLogsDescriptionPreprocessor(Preprocessor):
         column_descriptions = self._get_column_descriptions()
         description_df = pd.DataFrame(columns=["label", "description"])
         for column in relevant_columns:
-            values = set(huawei_df[column].dropna())
+            values = set(
+                huawei_df[column].dropna().astype(str).replace(np.nan, "", regex=True)
+            )
             values = set([str(x).lower() for x in values if len(str(x)) > 0])
             for value in tqdm(values, desc="Loading descriptions for column " + column):
                 description = ""
@@ -379,13 +405,7 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
 
     def load_data(self) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
-        huawei_df = preprocessor._read_log_df()
-        huawei_df = preprocessor._add_url_drain_clusters(huawei_df)
-        huawei_df["log_cluster_template"] = (
-            huawei_df["log_cluster_template"]
-            .fillna("")
-            .apply(lambda x: x if len(x) > 0 else "___empty___")
-        )
+        huawei_df = preprocessor._load_log_only_data()
         attribute_hierarchy = self._load_attribute_hierarchy(
             huawei_df, preprocessor.relevant_columns
         )
@@ -410,6 +430,14 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
             log_template = str(row["log_cluster_template"]).lower()
             for column in relevant_columns:
                 if column == "log_cluster_template":
+                    continue
+
+                row_value = (
+                    column + "#" + str(row[column]).lower()
+                    if len(str(row[column])) > 0
+                    else ""
+                )
+                if len(row_value) == 0:
                     continue
 
                 hierarchy_records.append(
@@ -448,7 +476,10 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
             values = set(
                 [
                     str(x).lower()
-                    for x in huawei_df[column].dropna()
+                    for x in huawei_df[column]
+                    .dropna()
+                    .astype(str)
+                    .replace(np.nan, "", regex=True)
                     if len(str(x)) > 0 and str(x).lower() != "nan"
                 ]
             )
