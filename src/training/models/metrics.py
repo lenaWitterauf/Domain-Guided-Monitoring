@@ -163,6 +163,7 @@ class PercentileSubsetMetricHelper:
         self.frequencies = absolute_class_frequencies / np.sum(
             absolute_class_frequencies
         )
+        print(self.frequencies)
         sorted_frequencies = self.frequencies.argsort()
         self.frequency_ranks = np.empty_like(sorted_frequencies)
         self.frequency_ranks[sorted_frequencies] = np.arange(len(self.frequencies))
