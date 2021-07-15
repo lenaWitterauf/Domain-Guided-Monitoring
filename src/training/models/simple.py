@@ -1,3 +1,4 @@
+from src.features.knowledge.base import BaseKnowledge
 from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
 import pandas as pd
@@ -8,21 +9,21 @@ from .config import ModelConfig
 
 
 class SimpleEmbedding(tf.keras.Model, BaseEmbedding):
-    def __init__(self, vocab: Dict[str, int], config: ModelConfig):
+    def __init__(self, knowledge: BaseKnowledge, config: ModelConfig):
         super(SimpleEmbedding, self).__init__()
         self.config = config
 
-        self.num_features = len(vocab)
+        self.num_features = len(knowledge.get_vocab())
         self.num_hidden_features = 0
         self.num_connections = 0
 
-        self._init_basic_embedding_variables(vocab)
+        self._init_basic_embedding_variables(knowledge)
 
-    def _init_basic_embedding_variables(self, vocab: Dict[str, int]):
+    def _init_basic_embedding_variables(self, knowledge: BaseKnowledge):
         logging.info("Initializing SIMPLE basic embedding variables")
         self.basic_feature_embeddings = self.add_weight(
             initializer=self._get_feature_initializer(
-                {idx: name for name, idx in vocab.items()}
+                {idx: name for name, idx in knowledge.get_vocab().items()}
             ),
             trainable=self.config.base_feature_embeddings_trainable,
             name="simple_embedding/basic_feature_embeddings",
@@ -41,7 +42,7 @@ class SimpleEmbedding(tf.keras.Model, BaseEmbedding):
 
 class SimpleModel(BaseModel):
     def _get_embedding_layer(
-        self, metadata: SequenceMetadata, vocab: Dict[str, int]
+        self, metadata: SequenceMetadata, knowledge: BaseKnowledge,
     ) -> tf.keras.Model:
-        return SimpleEmbedding(vocab, self.config)
+        return SimpleEmbedding(knowledge, self.config)
 

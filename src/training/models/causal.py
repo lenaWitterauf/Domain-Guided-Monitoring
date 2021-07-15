@@ -7,9 +7,9 @@ from .config import ModelConfig
 
 
 class CausalityEmbedding(KnowledgeEmbedding):
-    def __init__(self, causality: CausalityKnowledge, config: ModelConfig):
+    def __init__(self, knowledge: CausalityKnowledge, config: ModelConfig):
         super(CausalityEmbedding, self).__init__(
-            causality, config, "causality_embedding"
+            knowledge, config, "causality_embedding"
         )
 
 

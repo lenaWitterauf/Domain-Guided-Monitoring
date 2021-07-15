@@ -1,3 +1,6 @@
+from src.training.analysis import frequency
+from src.features.knowledge.noise import NoiseKnowledge
+from src.features.knowledge.base import BaseKnowledge
 from src.features.sequences.transformer import SequenceMetadata
 from src.training import analysis, models
 from src.features import preprocessing, sequences, knowledge
@@ -7,6 +10,7 @@ import tensorflow as tf
 from typing import Any, Tuple
 from .config import ExperimentConfig
 import mlflow
+import random
 from pathlib import Path
 
 
@@ -21,18 +25,22 @@ class ExperimentRunner:
     def run(self):
         logging.info("Starting run %s", self.run_id)
         tf.random.set_seed(self.config.tensorflow_seed)
+        random.seed(self.config.random_seed)
         sequence_df = self._load_sequences()
         if self.config.max_data_size > 0 and self.config.max_data_size < len(
             sequence_df
         ):
             logging.info(
-                "Only using first %d rows of sequence_df", self.config.max_data_size
+                "Only using first %d rows of sequence_df with %d rows",
+                self.config.max_data_size,
+                len(sequence_df),
             )
             sequence_df = sequence_df[0 : self.config.max_data_size]
 
         metadata = self._collect_sequence_metadata(sequence_df)
         (train_dataset, test_dataset) = self._create_dataset(sequence_df)
         (knowledge, model) = self._load_model(metadata)
+        knowledge = self._build_model(metadata, knowledge, model)
 
         model.train_dataset(
             train_dataset,
@@ -82,6 +90,7 @@ class ExperimentRunner:
         self._generate_metric_artifacts(artifact_dir, model)
         self._generate_embedding_artifacts(artifact_dir, metadata, knowledge, model)
         self._generate_confusion_artifacts(artifact_dir, metadata, model, test_dataset)
+        self._generate_frequency_artifacts(artifact_dir, metadata, train_dataset)
         mlflow.log_artifacts(artifact_dir)
 
     def _generate_metric_artifacts(
@@ -89,6 +98,17 @@ class ExperimentRunner:
     ):
         metric_plotter = analysis.MetricPlotter(model, plot_path=artifact_dir)
         metric_plotter.plot_all_metrics()
+
+    def _generate_frequency_artifacts(
+        self,
+        artifact_dir: str,
+        metadata: sequences.SequenceMetadata,
+        train_dataset: tf.data.Dataset,
+    ):
+        frequency_calculator = analysis.FrequencyCalculator(metadata)
+        frequency_calculator.write_frequency_for_dataset(
+            train_dataset, out_file_name=artifact_dir + "train_frequency.csv"
+        )
 
     def _generate_confusion_artifacts(
         self,
@@ -198,37 +218,61 @@ class ExperimentRunner:
                 "_test" if is_test else "_train"
             )
 
+    def _build_model(
+        self,
+        metadata: sequences.SequenceMetadata,
+        knowledge: knowledge.BaseKnowledge,
+        model: models.BaseModel,
+    ) -> knowledge.BaseKnowledge:
+        if self.config.noise_to_add > 0 or self.config.noise_to_remove > 0:
+            knowledge = NoiseKnowledge(knowledge)
+            knowledge.add_random_connections(percentage=self.config.noise_to_add)
+            knowledge.remove_random_connections(percentage=self.config.noise_to_remove)
+
+            noise_type = "added{}_removed{}".format(
+                self.config.noise_to_add, self.config.noise_to_remove
+            )
+            mlflow.set_tag("noise_type", noise_type)
+            mlflow.log_dict(
+                {k: list(v) for k, v in knowledge.original_connections.items()},
+                "original_knowledge.json",
+            )
+            mlflow.log_dict(
+                {k: list(v) for k, v in knowledge.connections.items()},
+                "noise_knowledge.json",
+            )
+        model.build(metadata, knowledge)
+        return knowledge
+
     def _load_model(
         self, metadata: sequences.SequenceMetadata
-    ) -> Tuple[Any, models.BaseModel]:
+    ) -> Tuple[knowledge.BaseKnowledge, models.BaseModel]:
         model: models.BaseModel
         if self.config.model_type == "simple":
+            knowledge = BaseKnowledge()
+            knowledge.vocab = metadata.x_vocab
+            knowledge.extended_vocab = metadata.x_vocab
             model = models.SimpleModel()
-            model.build(metadata, metadata.x_vocab)
-            return (None, model)
+            return (knowledge, model)
 
         elif self.config.model_type == "gram" or self.config.model_type == "hierarchy":
             hierarchy = self._load_hierarchy_knowledge(metadata)
             model = models.GramModel()
-            model.build(metadata, hierarchy)
             return (hierarchy, model)
 
         elif self.config.model_type == "text":
             description_knowledge = self._load_description_knowledge(metadata)
             model = models.DescriptionModel()
-            model.build(metadata, description_knowledge)
             return (description_knowledge, model)
 
         elif self.config.model_type == "text_paper":
             description_knowledge = self._load_description_knowledge(metadata)
             model = models.DescriptionPaperModel()
-            model.build(metadata, description_knowledge)
             return (description_knowledge, model)
 
         elif self.config.model_type == "causal":
             causality_knowledge = self._load_causal_knowledge(metadata)
             model = models.CausalityModel()
-            model.build(metadata, causality_knowledge)
             return (causality_knowledge, model)
 
         else:

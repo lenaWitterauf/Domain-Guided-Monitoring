@@ -310,5 +310,8 @@ mlruns/**
 
 # Tensorflow output
 *.tsv
-# pyvis output
+# notebook output
 notebooks/*.html
+notebooks/*.png
+notebooks/*.csv
+notebooks/*.json

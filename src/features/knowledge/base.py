@@ -12,7 +12,7 @@ class BaseKnowledge:
         return self.extended_vocab
 
     def get_connections_for_idx(self, idx: int) -> Set[int]:
-        return set()
+        return set([idx])
 
     def get_description_vocab(
         self, ids: Set[int]
