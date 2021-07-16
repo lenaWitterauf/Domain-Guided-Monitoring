@@ -13,7 +13,7 @@ class ExperimentConfig:
     noise_to_add: float = 0.0
     noise_to_remove: float = 0.0
     attention_weight_reference_file: Path = Path('data/attention.json')
-    attention_weight_reference_threshold: float = 0.0
+    attention_noise_to_remove: float = 0.0
     # DATASET GENERATION
     max_data_size: int = -1
     use_dataset_generator: bool = True

@@ -93,6 +93,30 @@ class NoiseKnowledge(BaseKnowledge):
                 self.num_connections -= 1
                 pbar.update(n=1)
 
+    def remove_lowest_connections(
+        self,
+        percentage: float = 0.1,
+        connections_reference_file: Path = Path("data/attention.json"),
+    ):
+        if not connections_reference_file.exists():
+            logging.error(
+                "Cannot read attention reference file from %s",
+                connections_reference_file,
+            )
+            return
+
+        num_connections_to_remove = int(percentage * self.original_num_connections)
+        with open(connections_reference_file) as attention_file:
+            connections_reference = json.load(attention_file)["attention_weights"]
+            flattened_connections = [
+                float(connection_weight)
+                for from_node, attention_info in connections_reference.items()
+                for to_node, connection_weight in attention_info.items()
+                if from_node != to_node
+            ]
+            threshold = sorted(flattened_connections)[num_connections_to_remove + 1]
+            self._remove_connections_below(threshold, connections_reference)
+
     def remove_connections_below(
         self,
         threshold: float = 0.001,
@@ -103,6 +127,7 @@ class NoiseKnowledge(BaseKnowledge):
                 "Cannot read attention reference file from %s",
                 connections_reference_file,
             )
+            return
 
         with open(connections_reference_file) as attention_file:
             connections_reference = json.load(attention_file)["attention_weights"]
@@ -119,10 +144,12 @@ class NoiseKnowledge(BaseKnowledge):
             total=len(connections_reference),
             desc="Removing connections with weights below {}".format(threshold),
         ):
-            if from_word not in self.get_extended_vocab(): continue
+            if from_word not in self.get_extended_vocab():
+                continue
             from_idx = self.get_extended_vocab()[from_word]
             for to_word, connection_weight in connections.items():
-                if to_word not in self.get_extended_vocab(): continue
+                if to_word not in self.get_extended_vocab():
+                    continue
                 to_idx = self.get_extended_vocab()[to_word]
                 if (from_idx == to_idx) or (to_idx not in self.connections[from_idx]):
                     continue

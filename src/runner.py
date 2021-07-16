@@ -224,11 +224,11 @@ class ExperimentRunner:
         if (
             self.config.noise_to_add > 0
             or self.config.noise_to_remove > 0
-            or self.config.attention_weight_reference_threshold > 0
+            or self.config.attention_noise_to_remove > 0
         ):
             knowledge = NoiseKnowledge(knowledge)
-            knowledge.remove_connections_below(
-                threshold=self.config.attention_weight_reference_threshold,
+            knowledge.remove_lowest_connections(
+                percentage=self.config.attention_noise_to_remove,
                 connections_reference_file=self.config.attention_weight_reference_file,
             )
             knowledge.add_random_connections(percentage=self.config.noise_to_add)
@@ -239,7 +239,7 @@ class ExperimentRunner:
                 "added{}_removed{}_threshold{}".format(
                     self.config.noise_to_add,
                     self.config.noise_to_remove,
-                    self.config.attention_weight_reference_threshold,
+                    self.config.attention_noise_to_remove,
                 ),
             )
             (

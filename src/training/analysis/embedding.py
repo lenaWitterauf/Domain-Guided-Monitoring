@@ -15,7 +15,7 @@ class EmbeddingHelper:
     def load_base_embeddings(self):
         base_embeddings = {}
         base_embedding_matrix = self.embedding.basic_feature_embeddings
-        for word, idx in self.vocab.items():
+        for word, idx in self.knowledge.get_vocab().items():
             base_embeddings[word + "_base"] = (
                 base_embedding_matrix[idx].numpy().flatten()
             )
@@ -23,7 +23,7 @@ class EmbeddingHelper:
         hidden_vocab = self._load_hidden_vocab()
         for word, idx in hidden_vocab.items():
             base_embeddings[word + "_hidden"] = (
-                base_hidden_embedding_matrix[idx - len(self.vocab)].numpy().flatten()
+                base_hidden_embedding_matrix[idx - len(self.knowledge.get_vocab())].numpy().flatten()
             )
 
         return base_embeddings
@@ -38,7 +38,7 @@ class EmbeddingHelper:
     def load_final_embeddings(self):
         final_embeddings = {}
         final_embedding_matrix = self.embedding._final_embedding_matrix()
-        for word, idx in self.vocab.items():
+        for word, idx in self.knowledge.get_vocab().items():
             final_embeddings[word] = final_embedding_matrix[idx].numpy().flatten()
 
         return final_embeddings
