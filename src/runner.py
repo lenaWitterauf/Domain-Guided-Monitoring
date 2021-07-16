@@ -229,17 +229,21 @@ class ExperimentRunner:
             knowledge.add_random_connections(percentage=self.config.noise_to_add)
             knowledge.remove_random_connections(percentage=self.config.noise_to_remove)
 
-            noise_type = "added{}_removed{}".format(
-                self.config.noise_to_add, self.config.noise_to_remove
+            mlflow.set_tag(
+                "noise_type",
+                "added{}_removed{}".format(
+                    self.config.noise_to_add, self.config.noise_to_remove
+                ),
             )
-            mlflow.set_tag("noise_type", noise_type)
+            (
+                original_connections_text,
+                noise_connections_text,
+            ) = knowledge.get_text_connections()
             mlflow.log_dict(
-                {k: list(v) for k, v in knowledge.original_connections.items()},
-                "original_knowledge.json",
+                original_connections_text, "original_knowledge.json",
             )
             mlflow.log_dict(
-                {k: list(v) for k, v in knowledge.connections.items()},
-                "noise_knowledge.json",
+                noise_connections_text, "noise_knowledge.json",
             )
         model.build(metadata, knowledge)
         return knowledge

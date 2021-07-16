@@ -1,5 +1,5 @@
 from src.features.knowledge.base import BaseKnowledge
-from typing import Dict, Set
+from typing import Dict, Set, Tuple, List
 from tqdm import tqdm
 import random
 from .base import BaseKnowledge
@@ -17,6 +17,18 @@ class NoiseKnowledge(BaseKnowledge):
         self.original_reverse_connections = {
             k: set(v) for k, v in self.reverse_connections.items()
         }
+
+    def get_text_connections(self) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
+        reverse_text_vocab: Dict[int, str] = {
+            v:k for k,v in self.extended_vocab.items()
+        }
+        original_connections_text = {
+            reverse_text_vocab[k]:[reverse_text_vocab[v] for v in vs] for k,vs in self.original_connections.items()
+        }
+        noise_connections_text = {
+            reverse_text_vocab[k]:[reverse_text_vocab[v] for v in vs] for k,vs in self.connections.items()
+        }
+        return (original_connections_text, noise_connections_text)
 
     def _initialize_connections_from_knowledge(self, knowledge: BaseKnowledge):
         self.num_connections = 0
