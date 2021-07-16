@@ -88,7 +88,7 @@ class ExperimentRunner:
             artifact_path.mkdir()
 
         self._generate_metric_artifacts(artifact_dir, model)
-        self._generate_embedding_artifacts(artifact_dir, metadata, knowledge, model)
+        self._generate_embedding_artifacts(artifact_dir, knowledge, model)
         self._generate_confusion_artifacts(artifact_dir, metadata, model, test_dataset)
         self._generate_frequency_artifacts(artifact_dir, metadata, train_dataset)
         mlflow.log_artifacts(artifact_dir)
@@ -130,13 +130,10 @@ class ExperimentRunner:
     def _generate_embedding_artifacts(
         self,
         artifact_dir: str,
-        metadata: sequences.SequenceMetadata,
-        knowledge: Any,
+        knowledge: knowledge.BaseKnowledge,
         model: models.BaseModel,
     ):
-        embedding_helper = analysis.EmbeddingHelper(
-            metadata.x_vocab, knowledge, model.embedding_layer
-        )
+        embedding_helper = analysis.EmbeddingHelper(knowledge, model.embedding_layer)
         if self.config.model_type in ["simple", "text_paper"]:
             embedding_helper.write_embeddings(
                 vec_file_name=artifact_dir + "vecs.tsv",

@@ -4,18 +4,11 @@ from typing import Dict, List, Tuple, Any
 import logging
 import io
 import json
-from ...features.knowledge import (
-    HierarchyKnowledge,
-    CausalityKnowledge,
-    DescriptionKnowledge,
-)
+from src.features.knowledge import BaseKnowledge
 
 
 class EmbeddingHelper:
-    def __init__(
-        self, vocab: Dict[str, int], knowledge: Any, embedding: tf.keras.Model
-    ):
-        self.vocab = vocab
+    def __init__(self, knowledge: BaseKnowledge, embedding: tf.keras.Model):
         self.knowledge = knowledge
         self.embedding = embedding
 
@@ -36,23 +29,11 @@ class EmbeddingHelper:
         return base_embeddings
 
     def _load_hidden_vocab(self) -> Dict[str, int]:
-        if isinstance(self.knowledge, DescriptionKnowledge):
-            return self.knowledge.words_vocab
-        elif isinstance(self.knowledge, CausalityKnowledge) or isinstance(
-            self.knowledge, HierarchyKnowledge
-        ):
-            return dict(
-                [
-                    (key, value)
-                    for (key, value) in self.knowledge.extended_vocab.items()
-                    if key not in self.knowledge.vocab
-                ]
-            )
-        else:
-            logging.error(
-                "Knowledge type %s does not have hidden vocab", str(self.knowledge)
-            )
-            return dict()
+        return {
+            key: value
+            for (key, value) in self.knowledge.get_extended_vocab().items()
+            if key not in self.knowledge.get_vocab()
+        }
 
     def load_final_embeddings(self):
         final_embeddings = {}
@@ -85,11 +66,11 @@ class EmbeddingHelper:
 
     def load_attention_weights(self) -> Dict[str, Dict[str, str]]:
         return self._load_attention_weights(
-            self._reverse_vocab(self.knowledge.extended_vocab)
+            self._reverse_vocab(self.knowledge.get_extended_vocab())
         )
 
     def _reverse_vocab(self, vocab: Dict[str, int]) -> Dict[int, str]:
-        return {v:k for k,v in vocab.items()}
+        return {v: k for k, v in vocab.items()}
 
     def write_attention_weights(self, file_name: str = "data/attention.json"):
         attention_weights = self.load_attention_weights()
@@ -102,7 +83,9 @@ class EmbeddingHelper:
     ) -> Dict[str, Dict[str, str]]:
         attention_weights: Dict[str, Dict[str, str]] = {}
         _, attention_matrix = self.embedding._calculate_attention_embeddings()
-        flattened_attention_matrix = [aw[0] for sublist in attention_matrix.numpy() for aw in sublist]
+        flattened_attention_matrix = [
+            aw[0] for sublist in attention_matrix.numpy() for aw in sublist
+        ]
         connection_indices = self.embedding.flattened_connection_indices
         connection_partition = self.embedding.connection_partition
 
@@ -115,8 +98,10 @@ class EmbeddingHelper:
 
             if from_word not in attention_weights:
                 attention_weights[from_word] = {}
-            
-            attention_weights[from_word][to_word] = str(flattened_attention_matrix[connection_idx])
+
+            attention_weights[from_word][to_word] = str(
+                flattened_attention_matrix[connection_idx]
+            )
 
         return attention_weights
 
