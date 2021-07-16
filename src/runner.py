@@ -224,15 +224,25 @@ class ExperimentRunner:
         knowledge: knowledge.BaseKnowledge,
         model: models.BaseModel,
     ) -> knowledge.BaseKnowledge:
-        if self.config.noise_to_add > 0 or self.config.noise_to_remove > 0:
+        if (
+            self.config.noise_to_add > 0
+            or self.config.noise_to_remove > 0
+            or self.config.attention_weight_reference_threshold > 0
+        ):
             knowledge = NoiseKnowledge(knowledge)
+            knowledge.remove_connections_below(
+                threshold=self.config.attention_weight_reference_threshold,
+                connections_reference_file=self.config.attention_weight_reference_file,
+            )
             knowledge.add_random_connections(percentage=self.config.noise_to_add)
             knowledge.remove_random_connections(percentage=self.config.noise_to_remove)
 
             mlflow.set_tag(
                 "noise_type",
-                "added{}_removed{}".format(
-                    self.config.noise_to_add, self.config.noise_to_remove
+                "added{}_removed{}_threshold{}".format(
+                    self.config.noise_to_add,
+                    self.config.noise_to_remove,
+                    self.config.attention_weight_reference_threshold,
                 ),
             )
             (

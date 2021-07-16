@@ -1,8 +1,11 @@
+from pathlib import Path
 from src.features.knowledge.base import BaseKnowledge
 from typing import Dict, Set, Tuple, List
 from tqdm import tqdm
 import random
+import logging
 from .base import BaseKnowledge
+import json
 
 
 class NoiseKnowledge(BaseKnowledge):
@@ -20,13 +23,15 @@ class NoiseKnowledge(BaseKnowledge):
 
     def get_text_connections(self) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
         reverse_text_vocab: Dict[int, str] = {
-            v:k for k,v in self.extended_vocab.items()
+            v: k for k, v in self.extended_vocab.items()
         }
         original_connections_text = {
-            reverse_text_vocab[k]:[reverse_text_vocab[v] for v in vs] for k,vs in self.original_connections.items()
+            reverse_text_vocab[k]: [reverse_text_vocab[v] for v in vs]
+            for k, vs in self.original_connections.items()
         }
         noise_connections_text = {
-            reverse_text_vocab[k]:[reverse_text_vocab[v] for v in vs] for k,vs in self.connections.items()
+            reverse_text_vocab[k]: [reverse_text_vocab[v] for v in vs]
+            for k, vs in self.connections.items()
         }
         return (original_connections_text, noise_connections_text)
 
@@ -87,6 +92,52 @@ class NoiseKnowledge(BaseKnowledge):
                 removed_connections += 1
                 self.num_connections -= 1
                 pbar.update(n=1)
+
+    def remove_connections_below(
+        self,
+        threshold: float = 0.001,
+        connections_reference_file: Path = Path("data/attention.json"),
+    ):
+        if not connections_reference_file.exists():
+            logging.error(
+                "Cannot read attention reference file from %s",
+                connections_reference_file,
+            )
+
+        with open(connections_reference_file) as attention_file:
+            connections_reference = json.load(attention_file)["attention_weights"]
+            self._remove_connections_below(threshold, connections_reference)
+
+    def _remove_connections_below(
+        self,
+        threshold: float = 0.001,
+        connections_reference: Dict[str, Dict[str, float]] = {},
+    ):
+        removed_connections = 0
+        for from_word, connections in tqdm(
+            connections_reference.items(),
+            total=len(connections_reference),
+            desc="Removing connections with weights below {}".format(threshold),
+        ):
+            if from_word not in self.get_extended_vocab(): continue
+            from_idx = self.get_extended_vocab()[from_word]
+            for to_word, connection_weight in connections.items():
+                if to_word not in self.get_extended_vocab(): continue
+                to_idx = self.get_extended_vocab()[to_word]
+                if (from_idx == to_idx) or (to_idx not in self.connections[from_idx]):
+                    continue
+
+                if float(connection_weight) < threshold:
+                    self.connections[from_idx].remove(to_idx)
+                    self.reverse_connections[to_idx].remove(from_idx)
+                    self.num_connections -= 1
+                    removed_connections += 1
+        logging.info(
+            "Removed %d connections that had weight < %f. %d connections remaining.",
+            removed_connections,
+            threshold,
+            self.num_connections,
+        )
 
     def get_vocab(self) -> Dict[str, int]:
         return self.vocab
