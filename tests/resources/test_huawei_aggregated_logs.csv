@@ -1,5 +1,5 @@
-time,a,b
-2020-01-01,a.a1,b.b1
-2020-01-02,a.a2,b.b2
-2020-01-03,,b_b2
-2020-01-03,a.a3,b
+time,a,b,text,url
+2020-01-01,a.a1,b.b1,"this is a log line","this/is/an/url"
+2020-01-02,a.a2,b.b2,"this is a log line","this/is/an/url"
+2020-01-03,,b_b2,"this is a log line","this/is/an/url"
+2020-01-03,a.a3,b,"this is a log line","this/is/an/url"
