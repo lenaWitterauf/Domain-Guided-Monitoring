@@ -48,32 +48,16 @@ class NextSequenceTransformer:
 
     def __init__(
         self,
-        test_percentage: float = 0.1,
-        random_test_split: bool = True,
-        random_state: int = 12345,
-        flatten_x: bool = True,
-        flatten_y: bool = True,
-        max_window_size: int = 10,
-        min_window_size: int = 1,
-        window_overlap: bool = True,
-        allow_subwindows: bool = True,
+        config: SequenceConfig,
     ):
-        self.test_percentage = test_percentage
-        self.random_test_split = random_test_split
-        self.random_state = random_state
-        self.flatten_x = flatten_x
-        self.flatten_y = flatten_y
-        self.max_window_size = max_window_size
-        self.min_window_size = min_window_size
-        self.window_overlap = window_overlap
-        self.allow_subwindows = allow_subwindows
+        self.config = config
 
     def collect_metadata(
         self, sequence_df: pd.DataFrame, sequence_column_name: str
     ) -> SequenceMetadata:
         (x_vocab, y_vocab) = self._generate_vocabs(sequence_df, sequence_column_name)
         max_sequence_length = min(
-            self.max_window_size, sequence_df[sequence_column_name].apply(len).max() - 1
+            self.config.max_window_size, sequence_df[sequence_column_name].apply(len).max() - 1
         )
         max_features_per_time = (
             sequence_df[sequence_column_name]
@@ -84,7 +68,7 @@ class NextSequenceTransformer:
 
         return SequenceMetadata(
             max_x_length=(
-                max_sequence_length if self.flatten_x else max_features_per_sequence
+                max_sequence_length if self.config.flatten_x else max_features_per_sequence
             ),
             max_sequence_length=max_sequence_length,
             max_features_per_time=max_features_per_time,
@@ -140,19 +124,19 @@ class NextSequenceTransformer:
                 len(sequence_list),
             )
 
-            test_size = int(self.test_percentage * len(sequence_list))
+            test_size = int(self.config.test_percentage * len(sequence_list))
             split_index = len(sequence_list) - test_size
             train_sequence_list = sequence_list[:split_index]
             test_sequence_list = sequence_list[split_index : len(sequence_list)]
             return ([train_sequence_list], [test_sequence_list])
-        elif self.random_test_split:
+        elif self.config.random_test_split:
             return train_test_split(
                 sequence_df[sequence_column_name],
-                test_size=self.test_percentage,
-                random_state=self.random_state,
+                test_size=self.config.test_percentage,
+                random_state=self.config.random_state,
             )
         else:
-            test_size = int(self.test_percentage * len(sequence_df))
+            test_size = int(self.config.test_percentage * len(sequence_df))
             split_index = len(sequence_df) - test_size
             train_sequence_df = sequence_df[:split_index]
             test_sequence_df = sequence_df[split_index : len(sequence_df)]
@@ -181,21 +165,21 @@ class NextSequenceTransformer:
                 yield splitted_sequence
 
     def _split_sequence(self, sequence: List[List[str]]) -> Generator[_SplittedSequence, None, None]:
-        if self.window_overlap:
+        if self.config.window_overlap:
             return self._split_sequence_overlap(sequence)
         else:
             return self._split_sequence_no_overlap(sequence)
 
     def _split_sequence_overlap(self, sequence: List[List[str]]) -> Generator[_SplittedSequence, None, None]:
         for start_index in range(0, len(sequence)):
-            max_end_index = min(start_index + self.max_window_size + 1, len(sequence))
+            max_end_index = min(start_index + self.config.max_window_size + 1, len(sequence))
             min_end_index = (
-                start_index + self.min_window_size
-                if self.allow_subwindows or start_index == 0
+                start_index + self.config.min_window_size
+                if self.config.allow_subwindows or start_index == 0
                 else max_end_index
             )
             for end_index in range(min_end_index, max_end_index):
-                if self.flatten_y:
+                if self.config.flatten_y:
                     splitted_sequences = self._split_sequence_y_flat(
                         sequence, start_index, end_index
                     )
@@ -208,10 +192,10 @@ class NextSequenceTransformer:
 
     def _split_sequence_no_overlap(self, sequence: List[List[str]]) -> Generator[_SplittedSequence, None, None]:
         start_index = 0
-        max_start_index = len(sequence) - 1 - self.min_window_size
+        max_start_index = len(sequence) - 1 - self.config.min_window_size
         while start_index <= max_start_index:
-            end_index = start_index + self.min_window_size
-            if self.flatten_y:
+            end_index = start_index + self.config.min_window_size
+            if self.config.flatten_y:
                 splitted_sequences = self._split_sequence_y_flat(
                     sequence, start_index, end_index
                 )
@@ -285,7 +269,7 @@ class NextSequenceTransformer:
     ):
 
         y_vec = self._transform_to_tensor(y, metadata.y_vocab)
-        if self.flatten_x:
+        if self.config.flatten_x:
             x_vecs_stacked = self._translate_and_pad_x_flat(
                 x, metadata.x_vocab, metadata.max_sequence_length
             )
@@ -340,17 +324,16 @@ class NextSequenceTransformer:
 class NextPartialSequenceTransformer(NextSequenceTransformer):
     """Split Sequences for next sequence prediction, but only keep some of the features as prediciton goals."""
 
+    def __init__(self, config: SequenceConfig):
+        super().__init__(config=config)
+        self.valid_x_features: List[str] = []
+        self.valid_y_features: List[str] = config.valid_y_features
+
     def set_valid_x_features(self, valid_x_features: List[str]):
-        self.valid_x_features: List[str] = valid_x_features
+        self.valid_x_features = valid_x_features
 
     def set_valid_y_features(self, valid_y_features: List[str]):
-        self.valid_y_features: List[str] = valid_y_features
-
-    def set_remove_empty_y_vecs(self, remove_empty_y_vecs: bool):
-        self.remove_empty_y_vecs: bool = remove_empty_y_vecs
-
-    def set_remove_empty_x_vecs(self, remove_empty_x_vecs: bool):
-        self.remove_empty_x_vecs: bool = remove_empty_x_vecs
+        self.valid_y_features = valid_y_features
 
     def _generate_vocabs(
         self, sequence_df: pd.DataFrame, sequence_column_name: str
@@ -370,8 +353,8 @@ class NextPartialSequenceTransformer(NextSequenceTransformer):
 
     def _split_sequence(self, sequence: List[List[str]]) -> Generator[_SplittedSequence, None, None]:
         splitted_sequence_generator = super()._split_sequence(sequence)
-        should_remove_empty_y_vecs = self.remove_empty_y_vecs and len(self.valid_y_features) > 0
-        should_remove_empty_x_vecs = self.remove_empty_x_vecs and len(self.valid_x_features) > 0
+        should_remove_empty_y_vecs = self.config.remove_empty_y_vecs and len(self.valid_y_features) > 0
+        should_remove_empty_x_vecs = self.config.remove_empty_x_vecs and len(self.valid_x_features) > 0
         for splitted_sequence in splitted_sequence_generator:
             if should_remove_empty_y_vecs and set(splitted_sequence.y).isdisjoint(self.valid_y_features):
                 continue
@@ -383,26 +366,19 @@ class NextPartialSequenceTransformer(NextSequenceTransformer):
 
 class NextPartialSequenceTransformerFromDataframe(NextPartialSequenceTransformer):
     """Split Sequences for next sequence prediction, but only keep some of the features as prediciton goals."""
-
-    def set_x_column_name(self, x_column_name: str):
-        self.x_column_name = x_column_name
-
-    def set_y_column_name(self, y_column_name: str):
-        self.y_column_name = y_column_name
-
     def _generate_vocabs(
         self, sequence_df: pd.DataFrame, sequence_column_name: str
     ) -> Tuple[Dict[str, int], Dict[str, int]]:
         x_vocab = self._generate_vocab(
             sequence_df,
-            self.x_column_name
-            if (self.x_column_name is not None and len(self.x_column_name) > 0)
+            self.config.x_sequence_column_name
+            if (self.config.x_sequence_column_name is not None and len(self.config.x_sequence_column_name) > 0)
             else sequence_column_name,
         )
         y_vocab = self._generate_vocab(
             sequence_df,
-            self.y_column_name
-            if (self.y_column_name is not None and len(self.y_column_name) > 0)
+            self.config.y_sequence_column_name
+            if (self.config.y_sequence_column_name is not None and len(self.config.y_sequence_column_name) > 0)
             else sequence_column_name,
         )
 
@@ -419,19 +395,7 @@ def load_sequence_transformer() -> NextSequenceTransformer:
             "Using only features %s as prediction goals",
             ",".join(config.valid_y_features),
         )
-        transformer = NextPartialSequenceTransformer(
-            test_percentage=config.test_percentage,
-            random_test_split=config.random_test_split,
-            random_state=config.random_state,
-            flatten_x=config.flatten_x,
-            flatten_y=config.flatten_y,
-            max_window_size=config.max_window_size,
-            min_window_size=config.min_window_size,
-            window_overlap=config.window_overlap,
-        )
-        transformer.set_valid_y_features(config.valid_y_features)
-        transformer.set_remove_empty_y_vecs(config.remove_empty_y_vecs)
-        return transformer
+        return NextPartialSequenceTransformer(config=config)
     elif (
         len(config.x_sequence_column_name) > 0 or len(config.y_sequence_column_name) > 0
     ):
@@ -440,29 +404,6 @@ def load_sequence_transformer() -> NextSequenceTransformer:
             config.x_sequence_column_name,
             config.y_sequence_column_name,
         )
-        transformer = NextPartialSequenceTransformerFromDataframe(
-            test_percentage=config.test_percentage,
-            random_test_split=config.random_test_split,
-            random_state=config.random_state,
-            flatten_x=config.flatten_x,
-            flatten_y=config.flatten_y,
-            max_window_size=config.max_window_size,
-            min_window_size=config.min_window_size,
-            window_overlap=config.window_overlap,
-        )
-        transformer.set_x_column_name(config.x_sequence_column_name)
-        transformer.set_y_column_name(config.y_sequence_column_name)
-        transformer.set_remove_empty_y_vecs(config.remove_empty_y_vecs)
-        transformer.set_remove_empty_x_vecs(config.remove_empty_x_vecs)
-        return transformer
+        return NextPartialSequenceTransformerFromDataframe(config=config)
     else:
-        return NextSequenceTransformer(
-            test_percentage=config.test_percentage,
-            random_test_split=config.random_test_split,
-            random_state=config.random_state,
-            flatten_x=config.flatten_x,
-            flatten_y=config.flatten_y,
-            max_window_size=config.max_window_size,
-            min_window_size=config.min_window_size,
-            window_overlap=config.window_overlap,
-        )
+        return NextSequenceTransformer(config=config)
