@@ -297,7 +297,10 @@ class ExperimentRunner:
     ) -> knowledge.DescriptionKnowledge:
         description_preprocessor: preprocessing.Preprocessor
         if self.config.sequence_type == "mimic":
-            description_preprocessor = preprocessing.ICD9DescriptionPreprocessor()
+            mimic_config = preprocessing.MimicPreprocessorConfig()
+            description_preprocessor = preprocessing.ICD9DescriptionPreprocessor(
+                config=mimic_config
+            )
             description_df = description_preprocessor.load_data()
             description_knowledge = knowledge.DescriptionKnowledge()
             description_knowledge.build_knowledge_from_df(
@@ -339,9 +342,7 @@ class ExperimentRunner:
         elif self.config.sequence_type == "mimic":
             mimic_config = preprocessing.MimicPreprocessorConfig()
             causality_preprocessor = preprocessing.KnowlifePreprocessor(
-                knowlife_file=mimic_config.knowlife_file,
-                umls_file=mimic_config.umls_file,
-                umls_api_key=mimic_config.umls_api_key,
+                config=mimic_config,
             )
             causality_df = causality_preprocessor.load_data()
             causality = knowledge.CausalityKnowledge()
@@ -362,7 +363,10 @@ class ExperimentRunner:
     ) -> knowledge.HierarchyKnowledge:
         hierarchy_preprocessor: preprocessing.Preprocessor
         if self.config.sequence_type == "mimic":
-            hierarchy_preprocessor = preprocessing.ICD9HierarchyPreprocessor()
+            mimic_config = preprocessing.MimicPreprocessorConfig()
+            hierarchy_preprocessor = preprocessing.ICD9HierarchyPreprocessor(
+                config=mimic_config
+            )
             hierarchy_df = hierarchy_preprocessor.load_data()
             hierarchy = knowledge.HierarchyKnowledge()
             hierarchy.build_hierarchy_from_df(hierarchy_df, metadata.x_vocab)
@@ -397,9 +401,7 @@ class ExperimentRunner:
         if self.config.sequence_type == "mimic":
             mimic_config = preprocessing.MimicPreprocessorConfig()
             sequence_preprocessor = preprocessing.MimicPreprocessor(
-                admission_file=mimic_config.admission_file,
-                diagnosis_file=mimic_config.diagnosis_file,
-                min_admissions_per_user=mimic_config.min_admissions_per_user,
+                config=mimic_config,
             )
             self.sequence_column_name = mimic_config.sequence_column_name
             return sequence_preprocessor.load_data()
@@ -438,7 +440,7 @@ class ExperimentRunner:
             sequence_df = sequence_df[0 : self.config.max_data_size]
 
         transformer = sequences.load_sequence_transformer()
-        if not transformer.flatten_y:
+        if not transformer.config.flatten_y:
             self.multilabel_classification = False
         return transformer.collect_metadata(sequence_df, self.sequence_column_name)
 

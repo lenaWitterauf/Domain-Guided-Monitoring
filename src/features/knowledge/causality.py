@@ -61,7 +61,8 @@ class CausalityKnowledge(BaseKnowledge):
 
         labels_to_handle = list(vocab.keys())
         max_index = max(vocab.values())
-        for label in labels_to_handle:
+        while len(labels_to_handle) > 0:
+            label = labels_to_handle.pop()
             if label in self.extended_vocab:
                 continue
 

@@ -1,3 +1,4 @@
+from unicodedata import digit
 import dataclass_cli
 import dataclasses
 import logging
@@ -49,28 +50,78 @@ class MimicPreprocessorConfig:
     knowlife_file: Path = Path("data/knowlife_dump.tsv")
     umls_file: Path = Path("data/umls.csv")
     umls_api_key: str = ""
+    replace_keys: List[str] = dataclasses.field(default_factory=lambda: [],)
+    replace_with_keys: List[str] = dataclasses.field(default_factory=lambda: [],)
+    replacement_percentages: List[float] = dataclasses.field(
+        default_factory=lambda: [],
+    )
+    replace_columns: List[str] = dataclasses.field(default_factory=lambda: [],)
+
 
 class ICD9HierarchyPreprocessor(Preprocessor):
-    def __init__(self, icd9_file=Path("data/icd9.csv")):
-        self.icd9_file = icd9_file
+    def __init__(self, config: MimicPreprocessorConfig):
+        self.config = config
 
     def load_data(self) -> pd.DataFrame:
         logging.info("Starting to preprocess ICD9 hierarchy")
         hierarchy_df = self._read_hierarchy_df()
-        return self._transform_hierarchy_df(hierarchy_df)
+        hierarchy_df = self._transform_hierarchy_df(hierarchy_df)
+        if len(self.config.replace_keys) > 0:
+            hierarchy_df = self._add_noise_connections(hierarchy_df)
+        return hierarchy_df
 
     def _read_hierarchy_df(self) -> pd.DataFrame:
-        return ICD9DataPreprocessor(self.icd9_file).load_data()
+        return ICD9DataPreprocessor(self.config.icd9_file).load_data()
 
     def _transform_hierarchy_df(self, hierarchy_df: pd.DataFrame):
         hierarchy_df["parent_id"] = hierarchy_df["parent_code"]
         hierarchy_df["child_id"] = hierarchy_df["child_code"]
         return hierarchy_df[["parent_id", "child_id", "parent_name", "child_name"]]
 
+    def _add_noise_connections(self, hierarchy_df: pd.DataFrame):
+        to_replace_keys = [str(x) for x in self.config.replace_keys]
+        replacement_keys = [str(x) for x in self.config.replace_with_keys]
+        if not len(to_replace_keys) == len(replacement_keys):
+            logging.error(
+                "Unable to add MIMIC noise connections, different list sizes: %d, %d",
+                len(to_replace_keys),
+                len(replacement_keys),
+            )
+            return hierarchy_df
+
+        for idx in tqdm(
+            range(len(to_replace_keys)),
+            desc="Adding noise connections for MIMIC Hierarchy",
+        ):
+            to_replace_name = (
+                hierarchy_df[hierarchy_df["child_id"] == to_replace_keys[idx]]
+                .reset_index(drop=True)["child_name"]
+                .to_list()[0]
+            )
+            hierarchy_df = hierarchy_df.append(
+                {
+                    "child_id": to_replace_keys[idx],
+                    "child_name": to_replace_name,
+                    "parent_id": "NOISENODE" + str(idx),
+                    "parent_name": "NOISENODE" + str(idx),
+                },
+                ignore_index=True,
+            ).append(
+                {
+                    "child_id": replacement_keys[idx],
+                    "child_name": replacement_keys[idx],
+                    "parent_id": "NOISENODE" + str(idx),
+                    "parent_name": "NOISENODE" + str(idx),
+                },
+                ignore_index=True,
+            )
+
+        return hierarchy_df
+
 
 class CCSHierarchyPreprocessor(Preprocessor):
-    def __init__(self, hierarchy_file=Path("data/ccs_multi_dx_tool_2015.csv")):
-        self.hierarchy_file = hierarchy_file
+    def __init__(self, config: MimicPreprocessorConfig):
+        self.config = config
 
     def load_data(self) -> pd.DataFrame:
         logging.info("Starting to preprocess CCS hierarchy")
@@ -78,8 +129,8 @@ class CCSHierarchyPreprocessor(Preprocessor):
         return self._transform_hierarchy_df(hierarchy_df)
 
     def _read_hierarchy_df(self) -> pd.DataFrame:
-        logging.info("Reading hierarchy_df from %s", self.hierarchy_file)
-        return pd.read_csv(self.hierarchy_file, quotechar="'", dtype=str)
+        logging.info("Reading hierarchy_df from %s", self.config.hierarchy_file)
+        return pd.read_csv(self.config.hierarchy_file, quotechar="'", dtype=str)
 
     def _transform_hierarchy_df(self, hierarchy_df: pd.DataFrame):
         transformed_hierarchy_df = pd.DataFrame(
@@ -128,8 +179,8 @@ class CCSHierarchyPreprocessor(Preprocessor):
 
 
 class ICD9DescriptionPreprocessor(Preprocessor):
-    def __init__(self, icd9_file=Path("data/icd9.csv")):
-        self.icd9_file = icd9_file
+    def __init__(self, config: MimicPreprocessorConfig):
+        self.config = config
 
     def load_data(self) -> pd.DataFrame:
         logging.info("Starting to preprocess ICD9 descriptions")
@@ -138,22 +189,52 @@ class ICD9DescriptionPreprocessor(Preprocessor):
         description_df["description"] = description_df["child_name"].apply(
             lambda x: x.replace('"', "")
         )
+        if len(self.config.replace_keys) > 0:
+            description_df = self._add_noise_connections(description_df)
         return description_df[["label", "description"]]
 
     def _read_description_df(self) -> pd.DataFrame:
-        return ICD9DataPreprocessor(self.icd9_file).load_data()
+        return ICD9DataPreprocessor(self.config.icd9_file).load_data()
+
+    def _add_noise_connections(self, description_df: pd.DataFrame):
+        to_replace_keys = [str(x) for x in self.config.replace_keys]
+        replacement_keys = [str(x) for x in self.config.replace_with_keys]
+        if not len(to_replace_keys) == len(replacement_keys):
+            logging.error(
+                "Unable to add MIMIC noise connections, different list sizes: %d, %d",
+                len(to_replace_keys),
+                len(replacement_keys),
+            )
+            return description_df
+
+        for idx in tqdm(
+            range(len(to_replace_keys)),
+            desc="Adding noise connections for MIMIC Descriptions",
+        ):
+            description_df.loc[
+                description_df["label"] == to_replace_keys[idx], "description"
+            ] = (
+                description_df.loc[
+                    description_df["label"] == to_replace_keys[idx], "description"
+                ]
+                + " NOISENODE" + str(idx)
+            )
+            description_df = description_df.append(
+                {
+                    "label": replacement_keys[idx],
+                    "description": "NOISENODE" + str(idx),
+                },
+                ignore_index=True,
+            )
+
+        return description_df
 
 
 class KnowlifePreprocessor(Preprocessor):
     def __init__(
-        self,
-        knowlife_file=Path("data/knowlife_dump.tsv"),
-        umls_file=Path("data/umls.csv"),
-        umls_api_key="",
+        self, config: MimicPreprocessorConfig,
     ):
-        self.knowlife_file = knowlife_file
-        self.umls_file = umls_file
-        self.umls_api_key = umls_api_key
+        self.config = config
 
     def load_data(self) -> pd.DataFrame:
         logging.info("Starting to preprocess Knowlife causality")
@@ -177,41 +258,67 @@ class KnowlifePreprocessor(Preprocessor):
         knowlife_df["child_id"] = right_knowlife_df["icd9_code"]
         knowlife_df["parent_name"] = left_knowlife_df["icd9_code"]
         knowlife_df["child_name"] = right_knowlife_df["icd9_code"]
-        return knowlife_df[["parent_id", "child_id", "parent_name", "child_name"]].dropna()
+        if len(self.config.replace_keys) > 0:
+            knowlife_df = self._add_noise_connections(knowlife_df)
+        return knowlife_df[
+            ["parent_id", "child_id", "parent_name", "child_name"]
+        ].dropna()
 
     def _read_knowlife_icd_mapping(self, knowlife_df: pd.DataFrame) -> pd.DataFrame:
-        return ICD9KnowlifeMatcher(self.umls_file, self.umls_api_key).load_data(
-            knowlife_df
-        )
+        return ICD9KnowlifeMatcher(
+            self.config.umls_file, self.config.umls_api_key
+        ).load_data(knowlife_df)
 
     def _read_knowlife_df(self) -> pd.DataFrame:
-        knowlife_df = pd.read_csv(self.knowlife_file, sep="\t")
+        knowlife_df = pd.read_csv(self.config.knowlife_file, sep="\t")
         knowlife_df = knowlife_df[knowlife_df["relation"] == "causes"].reset_index(
             drop=True
         )
         return knowlife_df
 
+    def _add_noise_connections(self, knowlife_df: pd.DataFrame):
+        to_replace_keys = [str(x) for x in self.config.replace_keys]
+        replacement_keys = [str(x) for x in self.config.replace_with_keys]
+        if not len(to_replace_keys) == len(replacement_keys):
+            logging.error(
+                "Unable to add MIMIC noise connections, different list sizes: %d, %d",
+                len(to_replace_keys),
+                len(replacement_keys),
+            )
+            return knowlife_df
+
+        for idx in tqdm(
+            range(len(to_replace_keys)),
+            desc="Adding noise connections for MIMIC Knowlife Causality",
+        ):
+            knowlife_df = knowlife_df.append(
+                {
+                    "child_id": to_replace_keys[idx],
+                    "child_name": to_replace_keys[idx],
+                    "parent_id": "NOISENODE" + str(idx),
+                    "parent_name": "NOISENODE" + str(idx),
+                },
+                ignore_index=True,
+            ).append(
+                {
+                    "child_id": replacement_keys[idx],
+                    "child_name": replacement_keys[idx],
+                    "parent_id": "NOISENODE" + str(idx),
+                    "parent_name": "NOISENODE" + str(idx),
+                },
+                ignore_index=True,
+            )
+
+        return knowlife_df
+
 
 class MimicPreprocessor(Preprocessor):
     def __init__(
-        self,
-        admission_file=Path("data/ADMISSIONS.csv"),
-        diagnosis_file=Path("data/DIAGNOSES_ICD.csv"),
-        icd9_file=Path("data/icd9.csv"),
-        min_admissions_per_user=2,
-        add_icd9_info_to_sequences=True,
+        self, config: MimicPreprocessorConfig,
     ):
-        self.admission_file = admission_file
-        self.diagnosis_file = diagnosis_file
-        self.icd9_file = icd9_file
-        self.min_admissions_per_user = min_admissions_per_user
-        self.add_icd9_info_to_sequences = add_icd9_info_to_sequences
+        self.config = config
         self.aggregation_column_names = set(
-            [
-                "icd9_code",
-                "icd9_code_converted",
-                "icd9_code_converted_3digits",
-            ]
+            ["icd9_code", "icd9_code_converted", "icd9_code_converted_3digits",]
         )
 
     def load_data(self) -> pd.DataFrame:
@@ -222,12 +329,12 @@ class MimicPreprocessor(Preprocessor):
             diagnosis_df=diagnosis_df, admission_df=admission_df
         )
         return aggregated_df[
-            aggregated_df["num_admissions"] >= self.min_admissions_per_user
+            aggregated_df["num_admissions"] >= self.config.min_admissions_per_user
         ]
 
     def _read_admission_df(self) -> pd.DataFrame:
-        logging.info("Reading admission_df from %s", self.admission_file)
-        admission_df = pd.read_csv(self.admission_file)
+        logging.info("Reading admission_df from %s", self.config.admission_file)
+        admission_df = pd.read_csv(self.config.admission_file)
         admission_df.columns = [x.lower() for x in admission_df.columns]
         admission_df["admittime"] = pd.to_datetime(admission_df["admittime"])
         admission_df["dischtime"] = pd.to_datetime(admission_df["dischtime"])
@@ -237,11 +344,11 @@ class MimicPreprocessor(Preprocessor):
         return admission_df
 
     def _read_diagnosis_df(self) -> pd.DataFrame:
-        logging.info("Reading diagnosis_df from %s", self.diagnosis_file)
-        diagnosis_df = pd.read_csv(self.diagnosis_file)
+        logging.info("Reading diagnosis_df from %s", self.config.diagnosis_file)
+        diagnosis_df = pd.read_csv(self.config.diagnosis_file)
         diagnosis_df.columns = [x.lower() for x in diagnosis_df.columns]
 
-        diagnosis_df["icd9_code"] = diagnosis_df["icd9_code"].apply(str)
+        diagnosis_df["icd9_code"] = diagnosis_df["icd9_code"].fillna("").apply(str)
         diagnosis_df["icd9_code_converted"] = diagnosis_df["icd9_code"].apply(
             _convert_to_icd9
         )
@@ -249,13 +356,47 @@ class MimicPreprocessor(Preprocessor):
             _convert_to_3digit_icd9
         )
 
-        if self.add_icd9_info_to_sequences:
-            return self._add_icd9_information(diagnosis_df)
-        else:
+        if self.config.add_icd9_info_to_sequences:
+            diagnosis_df = self._add_icd9_information(diagnosis_df)
+        if len(self.config.replace_keys) > 0:
+            diagnosis_df = self._add_noise(diagnosis_df)
+
+        return diagnosis_df
+
+    def _add_noise(self, diagnosis_df: pd.DataFrame) -> pd.DataFrame:
+        to_replace_keys = [str(x) for x in self.config.replace_keys]
+        replacement_keys = [str(x) for x in self.config.replace_with_keys]
+        replacement_percentages = [
+            float(x) for x in self.config.replacement_percentages
+        ]
+        replacement_columns = self.config.replace_columns
+        if (
+            not len(to_replace_keys) == len(replacement_keys)
+            or not len(to_replace_keys) == len(replacement_percentages)
+            or not len(to_replace_keys) == len(replacement_columns)
+        ):
+            logging.error(
+                "Unable to add MIMIC noise, different list sizes: %d, %d, %d, %d",
+                len(to_replace_keys),
+                len(replacement_keys),
+                len(replacement_percentages),
+                len(replacement_columns),
+            )
             return diagnosis_df
 
+        for idx in tqdm(
+            range(len(to_replace_keys)), desc="Adding noise to MIMIC dataset"
+        ):
+            replace_samples = diagnosis_df[
+                diagnosis_df[replacement_columns[idx]] == to_replace_keys[idx]
+            ].sample(frac=replacement_percentages[idx])
+
+            diagnosis_df.loc[replace_samples.index, replacement_columns[idx]] = replacement_keys[idx]
+
+        return diagnosis_df
+
     def _add_icd9_information(self, diagnosis_df: pd.DataFrame) -> pd.DataFrame:
-        icd9_preprocessor = ICD9DataPreprocessor(self.icd9_file)
+        icd9_preprocessor = ICD9DataPreprocessor(self.config.icd9_file)
 
         icd9_df = icd9_preprocessor.load_data()[
             ["child_code", "child_name"]
@@ -274,10 +415,9 @@ class MimicPreprocessor(Preprocessor):
             left_on="icd9_code_converted_3digits",
             right_on="child_code",
         )["child_name"].fillna(diagnosis_df["icd9_code_converted_3digits"])
-        self.aggregation_column_names.update([
-                "icd9_code_name",
-                "icd9_code_name_3digits",
-        ])
+        self.aggregation_column_names.update(
+            ["icd9_code_name", "icd9_code_name_3digits",]
+        )
 
         icd9_hierarchy_df = icd9_preprocessor.load_data_as_hierarchy()
         self.aggregation_column_names.update(icd9_hierarchy_df.columns)

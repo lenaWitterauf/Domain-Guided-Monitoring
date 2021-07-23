@@ -1,6 +1,7 @@
 import unittest
 import pandas as pd
 from pathlib import Path
+from typing import List
 
 from src.features.preprocessing.mimic import MimicPreprocessor
 from ...test_utils import transform_to_string
@@ -8,9 +9,7 @@ from ...test_utils import transform_to_string
 class TestMimic(unittest.TestCase):
     def test_mimic_preprocessing(self):
         fixture = MimicPreprocessor(
-            admission_file=Path('tests/resources/test_mimic_admissions.csv'),
-            diagnosis_file=Path('tests/resources/test_mimic_diagnoses.csv'),
-            add_icd9_info_to_sequences=False,
+            config=TestMimicPreprocessorConfig(),
         )
 
         expected_aggregated_visits = pd.DataFrame(
@@ -40,3 +39,20 @@ class TestMimic(unittest.TestCase):
             aggregated_df[['subject_id', 'str_visits']],
             check_like=True,
         )
+
+class TestMimicPreprocessorConfig:
+    admission_file: Path = Path('tests/resources/test_mimic_admissions.csv')
+    diagnosis_file: Path = Path('tests/resources/test_mimic_diagnoses.csv')
+    hierarchy_file: Path = Path("data/ccs_multi_dx_tool_2015.csv")
+    icd9_file: Path = Path("data/icd9.csv")
+    use_icd9_data: bool = True
+    min_admissions_per_user: int = 2
+    sequence_column_name: str = "icd9_code_converted_3digits"
+    add_icd9_info_to_sequences: bool = False
+    knowlife_file: Path = Path("data/knowlife_dump.tsv")
+    umls_file: Path = Path("data/umls.csv")
+    umls_api_key: str = ""
+    replace_keys: List[str] = []
+    replace_with_keys: List[str] = []
+    replacement_percentages: List[float] = []
+    replace_columns: List[str] = []
