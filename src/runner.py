@@ -333,7 +333,9 @@ class ExperimentRunner:
         causality_preprocessor: preprocessing.Preprocessor
         if self.config.sequence_type == "huawei_logs":
             causality_preprocessor = (
-                preprocessing.ConcurrentAggregatedLogsCausalityPreprocessor()
+                preprocessing.ConcurrentAggregatedLogsCausalityPreprocessor(
+                    config=preprocessing.HuaweiPreprocessorConfig(),
+                )
             )
             causality_df = causality_preprocessor.load_data()
             causality = knowledge.CausalityKnowledge()

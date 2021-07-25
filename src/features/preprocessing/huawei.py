@@ -54,6 +54,7 @@ class HuaweiPreprocessorConfig:
     drain_url_st: float = 0.5
     add_log_clusters: bool = True
     min_logs_per_trace: int = 2
+    min_causality: float = 0.0
 
 
 class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
@@ -342,7 +343,7 @@ class ConcurrentAggregatedLogsDescriptionPreprocessor(Preprocessor):
     ) -> pd.DataFrame:
         http_descriptions = self._load_http_descriptions()
         column_descriptions = self._get_column_descriptions()
-        description_df = pd.DataFrame(columns=["label", "description"])
+        description_records = []
         for column in relevant_columns:
             values = set(
                 huawei_df[column].dropna().astype(str).replace(np.nan, "", regex=True)
@@ -362,12 +363,15 @@ class ConcurrentAggregatedLogsDescriptionPreprocessor(Preprocessor):
                 if column in column_descriptions:
                     description = column_descriptions[column] + " " + description
 
-                description_df = description_df.append(
+                description_records.append(
                     {"label": column + "#" + value, "description": description,},
-                    ignore_index=True,
                 )
 
-        return description_df[["label", "description"]]
+        return (
+            pd.DataFrame.from_records(description_records)
+            .drop_duplicates()
+            .reset_index(drop=True)
+        )
 
     def _get_column_descriptions(self) -> Dict[str, str]:
         return {
@@ -442,10 +446,10 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
 
                 hierarchy_records.append(
                     {
-                        "parent_id": column + "#" + str(row[column]).lower(),
-                        "parent_name": column + "#" + str(row[column]).lower(),
+                        "parent_id": row_value,
+                        "parent_name": row_value.split("#")[1],
                         "child_id": "log_cluster_template" + "#" + log_template,
-                        "child_name": "log_cluster_template" + "#" + log_template,
+                        "child_name": log_template,
                     },
                 )
         return (
@@ -538,30 +542,18 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
 
 class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
     def __init__(
-        self,
-        log_file: Path = Path("data/logs_aggregated_concurrent.csv"),
-        relevant_columns: List[str] = [
-            "Hostname",
-            "log_level",
-            "programname",
-            "python_module",
-            "http_status",
-            "http_method",
-        ],
-        min_causality: float = 0.0,
+        self, config: HuaweiPreprocessorConfig,
     ):
-        self.log_file = log_file
-        self.relevant_columns = relevant_columns
-        self.min_causality = min_causality
+        self.config = config
 
     def load_data(self) -> pd.DataFrame:
-        df = pd.read_csv(self.log_file).fillna("")
-        rel_df = df[self.relevant_columns]
-        counted_causality = self._generate_counted_causality(rel_df)
-        causality_df = pd.DataFrame(
-            columns=["parent_id", "child_id", "parent_name", "child_name"]
+        preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
+        huawei_df = preprocessor._load_log_only_data().fillna("")
+        counted_causality = self._generate_counted_causality(
+            huawei_df, preprocessor.relevant_columns
         )
 
+        causality_records = []
         for from_value, to_values in tqdm(
             counted_causality.items(),
             desc="Generating causality df from counted causality",
@@ -569,20 +561,25 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
             total_to_counts = len(to_values)
             to_values_counter: Dict[str, int] = Counter(to_values)
             for to_value, to_count in to_values_counter.items():
-                if to_count / total_to_counts > self.min_causality:
-                    causality_df = causality_df.append(
+                if to_count / total_to_counts > self.config.min_causality:
+                    causality_records.append(
                         {
                             "parent_id": from_value,
-                            "parent_name": from_value.split("->")[1],
+                            "parent_name": from_value.split("#")[1],
                             "child_id": to_value,
-                            "child_name": to_value.split("->")[1],
+                            "child_name": to_value.split("#")[1],
                         },
-                        ignore_index=True,
                     )
 
-        return causality_df[["parent_id", "child_id", "parent_name", "child_name"]]
+        return (
+            pd.DataFrame.from_records(causality_records)
+            .drop_duplicates()
+            .reset_index(drop=True)
+        )
 
-    def _generate_counted_causality(self, df: pd.DataFrame) -> Dict[str, List[str]]:
+    def _generate_counted_causality(
+        self, df: pd.DataFrame, relevant_columns: Set[str]
+    ) -> Dict[str, List[str]]:
         causality: Dict[str, List[str]] = {}
         previous_row = None
         for _, row in tqdm(
@@ -593,19 +590,21 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
             if previous_row is None:
                 previous_row = row
                 continue
-            for previous_column in self.relevant_columns:
+            for previous_column in relevant_columns:
                 previous_column_value = (
-                    str(previous_column)
-                    + "->"
-                    + str(previous_row[previous_column]).lower()
+                    previous_column + "#" + str(previous_row[previous_column]).lower()
+                    if len(str(previous_row[previous_column])) > 0
+                    else ""
                 )
                 if len(previous_column_value) < 1:
                     continue
                 if previous_column_value not in causality:
                     causality[previous_column_value] = []
-                for current_column in self.relevant_columns:
+                for current_column in relevant_columns:
                     current_column_value = (
-                        str(current_column) + "->" + str(row[current_column]).lower()
+                        current_column + "#" + str(row[current_column]).lower()
+                        if len(str(row[current_column])) > 0
+                        else ""
                     )
                     if len(current_column_value) < 1:
                         continue
