@@ -6,6 +6,7 @@ from .metrics import (
     MulticlassTrueNegativeRate,
     MulticlassTruePositiveRate,
     PercentileSubsetMetricHelper,
+    MultilabelNestedMetric,
 )
 from .config import ModelConfig
 from .callbacks import MLFlowCallback, BestModelRestoreCallback
@@ -134,7 +135,7 @@ class BaseModel:
             if len(self.metadata.y_vocab) == 1:
                 self._compile_singleclass()
             elif multilabel_classification:
-                self._compile_multilabel()
+                self._compile_multilabel(train_dataset)
             else:
                 self._compile_multiclass(train_dataset)
 
@@ -169,12 +170,29 @@ class BaseModel:
             metrics=self.metrics,
         )
 
-    def _compile_multilabel(self):
+    def _compile_multilabel(self, train_dataset: tf.data.Dataset):
         self.metrics = [
-            MulticlassAccuracy(),
-            MulticlassTrueNegativeRate(),
-            MulticlassTruePositiveRate(),
+            MultilabelNestedMetric(
+                nested_metric=tf.keras.metrics.CategoricalAccuracy(),
+                name="categorical_accuracy",
+            ),
+            MultilabelNestedMetric(
+                nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=5),
+                name="top_5_categorical_accuracy",
+            ),
+            MultilabelNestedMetric(
+                nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=10),
+                name="top_10_categorical_accuracy",
+            ),
+            MultilabelNestedMetric(
+                nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=20),
+                name="top_20_categorical_accuracy",
+            )
         ]
+        metric_helper = PercentileSubsetMetricHelper(train_dataset, num_percentiles=self.config.metrics_num_percentiles, y_vocab=self.metadata.y_vocab)
+        for k in [5, 10, 20]:
+            self.metrics = self.metrics + metric_helper.get_multilabel_accuracy_at_k_for_percentiles(k=k)
+
         self.prediction_model.compile(
             loss=self.config.loss,
             optimizer=tf.optimizers.Adam(),

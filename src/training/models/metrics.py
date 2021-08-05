@@ -86,6 +86,44 @@ class MulticlassTrueNegativeRate(MulticlassMetric):
         )
 
 
+class MultilabelNestedMetric(tf.keras.metrics.Metric):
+    def __init__(self, nested_metric: tf.keras.metrics.Metric, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.nested_metric = nested_metric
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        id_tensor = tf.eye(tf.shape(y_true)[1], dtype="int32")
+        id_tensor_expanded = tf.reshape(
+            tf.broadcast_to(
+                tf.expand_dims(id_tensor, axis=0),
+                (tf.shape(y_true)[0], tf.shape(y_true)[1], tf.shape(y_true)[1]),
+            ),
+            (tf.shape(y_true)[0] * tf.shape(y_true)[1], tf.shape(y_true)[1]),
+        )
+        cleaned_id_tensor = tf.where(
+            (id_tensor_expanded == 1)
+            & (tf.repeat(y_true, repeats=tf.shape(y_true)[1], axis=0) == 1),
+            x=1,
+            y=0,
+        )
+
+        weights = tf.reduce_sum(cleaned_id_tensor, axis=1,)
+        if sample_weight is not None:
+            weights = weights * tf.repeat(sample_weight, tf.shape(y_true)[1], axis=0)
+
+        self.nested_metric.update_state(
+            y_true=cleaned_id_tensor,
+            y_pred=tf.repeat(y_pred, tf.shape(y_true)[1], axis=0),
+            sample_weight=weights,
+        )
+
+    def result(self):
+        return self.nested_metric.result()
+
+    def reset_states(self):
+        self.nested_metric.reset_states()
+
+
 class SubsetMetric(tf.keras.metrics.Metric):
     def __init__(
         self,
@@ -99,12 +137,11 @@ class SubsetMetric(tf.keras.metrics.Metric):
         self.nested_metric = nested_metric
 
     def update_state(self, y_true, y_pred, sample_weight=None):
+        weights = tf.reduce_sum(tf.where(self.dataset_mask, x=y_true, y=0), axis=1)
+        if sample_weight is not None:
+            weights = weights * sample_weight
         self.nested_metric.update_state(
-            y_true,
-            y_pred,
-            sample_weight=tf.reduce_sum(
-                tf.where(self.dataset_mask, x=y_true, y=0), axis=1
-            ),
+            y_true, y_pred, sample_weight=weights,
         )
 
     def result(self):
@@ -123,6 +160,36 @@ class PercentileSubsetMetricHelper:
         self.y_vocab = y_vocab
         self._init_percentiles()
         self._log_percentile_mapping_to_mlflow()
+
+    def get_multilabel_accuracy_at_k_for_percentiles(
+        self, k
+    ) -> List[tf.keras.metrics.Metric]:
+        metrics = []
+        for i in range(self.num_percentiles):
+            name = "top_" + str(k) + "_categorical_accuracy_p" + str(i)
+            mask = np.where(
+                (self.frequency_ranks > self.percentiles[i])
+                & (self.frequency_ranks <= self.percentiles[i + 1]),
+                True,
+                False,
+            )
+            if not np.any(mask):
+                logging.warn("No class labels in percentile %d", i)
+                continue
+
+            metrics.append(
+                MultilabelNestedMetric(
+                    nested_metric=SubsetMetric(
+                        dataset_mask=mask,
+                        nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(
+                            k=k, name=name
+                        ),
+                    ),
+                    name=name,
+                )
+            )
+
+        return metrics
 
     def get_accuracy_at_k_for_percentiles(self, k) -> List[tf.keras.metrics.Metric]:
         metrics = []

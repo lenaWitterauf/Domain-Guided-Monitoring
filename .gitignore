@@ -303,6 +303,7 @@ artifacts/**
 
 # MlFlow
 mlruns/**
+tests/mlruns/**
 
 # Fasttext models
 *.bin

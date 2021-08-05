@@ -16,7 +16,7 @@ class TestHuawei(unittest.TestCase):
     def test_huawei_preprocessing(self):
         config = HuaweiPreprocessorConfig()
         config.aggregated_log_file = Path(
-            "tests/resources/test_huawei_aggregated_logs.csv"
+            "../tests/resources/test_huawei_aggregated_logs.csv"
         )
         config.log_datetime_column_name = "time"
         config.relevant_aggregated_log_columns = ["a", "b"]
@@ -70,7 +70,7 @@ class TestHuawei(unittest.TestCase):
     def test_huawei_descriptions(self):
         config = HuaweiPreprocessorConfig()
         config.aggregated_log_file = Path(
-            "tests/resources/test_huawei_aggregated_logs.csv"
+            "../tests/resources/test_huawei_aggregated_logs.csv"
         )
         config.log_datetime_column_name = "time"
         config.relevant_aggregated_log_columns = ["a", "b"]
@@ -104,7 +104,7 @@ class TestHuawei(unittest.TestCase):
     def test_huawei_hierarchy(self):
         config = HuaweiPreprocessorConfig()
         config.aggregated_log_file = Path(
-            "tests/resources/test_huawei_aggregated_logs.csv"
+            "../tests/resources/test_huawei_aggregated_logs.csv"
         )
         config.log_datetime_column_name = "time"
         config.relevant_aggregated_log_columns = ["a", "b"]

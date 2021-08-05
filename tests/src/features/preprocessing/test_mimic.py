@@ -41,8 +41,8 @@ class TestMimic(unittest.TestCase):
         )
 
 class TestMimicPreprocessorConfig:
-    admission_file: Path = Path('tests/resources/test_mimic_admissions.csv')
-    diagnosis_file: Path = Path('tests/resources/test_mimic_diagnoses.csv')
+    admission_file: Path = Path('../tests/resources/test_mimic_admissions.csv')
+    diagnosis_file: Path = Path('../tests/resources/test_mimic_diagnoses.csv')
     hierarchy_file: Path = Path("data/ccs_multi_dx_tool_2015.csv")
     icd9_file: Path = Path("data/icd9.csv")
     use_icd9_data: bool = True

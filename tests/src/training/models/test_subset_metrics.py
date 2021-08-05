@@ -6,6 +6,19 @@ from src.training.models import metrics
 
 
 class TestSubsetMetrics(unittest.TestCase):
+    def test_subset_metric_multilabel(self):
+        y_true = self._get_y_true_multilabel()
+        y_pred = self._get_y_pred_multilabel()
+
+        fixture = metrics.MultilabelNestedMetric(
+            nested_metric=metrics.SubsetMetric(
+                dataset_mask=np.array([True, False, True]),
+                nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=2),
+            ),
+        )
+        fixture.update_state(y_true, y_pred)
+        self.assertEquals(0.5, fixture.result())
+
     def test_subset_metric(self):
         y_true = self._get_y_true()
         y_pred = self._get_y_pred()
@@ -48,6 +61,12 @@ class TestSubsetMetrics(unittest.TestCase):
         return tf.constant([[1, 0, 0], [0, 1, 0], [1, 0, 0],])
 
     def _get_y_pred(self):
+        return tf.constant([[0.7, 0.3, 0.1], [0.24, 0.8, 0.3], [0.1, 0.6, 0.2],])
+
+    def _get_y_true_multilabel(self):
+        return tf.constant([[1, 1, 0], [1, 1, 0], [1, 0, 1],])
+
+    def _get_y_pred_multilabel(self):
         return tf.constant([[0.7, 0.3, 0.1], [0.24, 0.8, 0.3], [0.1, 0.6, 0.2],])
 
     def _get_y_vocab(self):
