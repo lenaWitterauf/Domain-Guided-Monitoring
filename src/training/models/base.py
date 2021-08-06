@@ -155,6 +155,7 @@ class BaseModel:
                     BestModelRestoreCallback(
                         metric=self.config.best_model_metric,
                         minimize=self.config.best_model_metric_minimize,
+                        early_stopping_epochs=self.config.early_stopping_epochs,
                     ),
                 ],
             )

@@ -12,10 +12,11 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
 
 
 class BestModelRestoreCallback(tf.keras.callbacks.Callback):
-    def __init__(self, metric="val_loss", minimize=True):
+    def __init__(self, metric="val_loss", minimize=True, early_stopping_epochs=5):
         super(BestModelRestoreCallback, self).__init__()
         self.metric = metric
         self.minimize = minimize
+        self.early_stopping_epochs = early_stopping_epochs
 
     def on_train_begin(self, logs=None):
         self.best_weights = None
@@ -34,6 +35,11 @@ class BestModelRestoreCallback(tf.keras.callbacks.Callback):
             self.best_metric_value = current_metric_value
             self.best_weights = self.model.get_weights()
             self.best_epoch = epoch
+        elif self.early_stopping_epochs > -1 and self.best_epoch > -1:
+            epochs_without_improvement = epoch - self.best_epoch
+            if epochs_without_improvement > self.early_stopping_epochs:
+                logging.info("Early stopping at epoch %d after waiting for %d epochs", epoch, epochs_without_improvement)
+                self.model.stop_training = True
 
     def _is_better(self, current_metric_value):
         if self.minimize:

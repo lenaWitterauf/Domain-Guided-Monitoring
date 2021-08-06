@@ -19,6 +19,7 @@ class ModelConfig:
     distribute_strategy: str = ""
     best_model_metric: str = "val_loss"
     best_model_metric_minimize: bool = True
+    early_stopping_epochs: int = 5
     metrics_num_percentiles: int = 5
     final_activation_function: str = "softmax"
     loss: str = "binary_crossentropy"
