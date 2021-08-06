@@ -161,61 +161,66 @@ class PercentileSubsetMetricHelper:
         self._init_percentiles()
         self._log_percentile_mapping_to_mlflow()
 
-    def get_multilabel_accuracy_at_k_for_percentiles(
-        self, k
+    def get_accuracy_at_k_for(
+        self, k, is_multilabel: bool, use_cumulative: bool
     ) -> List[tf.keras.metrics.Metric]:
         metrics = []
         for i in range(self.num_percentiles):
-            name = "top_" + str(k) + "_categorical_accuracy_p" + str(i)
-            mask = np.where(
-                (self.frequency_ranks > self.percentiles[i])
-                & (self.frequency_ranks <= self.percentiles[i + 1]),
-                True,
-                False,
+            name = (
+                "top_"
+                + str(k)
+                + "_categorical_accuracy_"
+                + ("cp" if use_cumulative else "p")
+                + str(i)
             )
-            if not np.any(mask):
-                logging.warn("No class labels in percentile %d", i)
-                continue
+            mask = self._get_mask_for_percentile(i, use_cumulative=use_cumulative)
 
             metrics.append(
-                MultilabelNestedMetric(
-                    nested_metric=SubsetMetric(
-                        dataset_mask=mask,
-                        nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(
-                            k=k, name=name
-                        ),
-                    ),
-                    name=name,
-                )
+                self._get_accuracy_at_k_with_mask(k, is_multilabel=is_multilabel, mask=mask, name=name)
             )
 
         return metrics
 
-    def get_accuracy_at_k_for_percentiles(self, k) -> List[tf.keras.metrics.Metric]:
-        metrics = []
-        for i in range(self.num_percentiles):
-            name = "top_" + str(k) + "_categorical_accuracy_p" + str(i)
-            mask = np.where(
-                (self.frequency_ranks > self.percentiles[i])
-                & (self.frequency_ranks <= self.percentiles[i + 1]),
-                True,
-                False,
-            )
-            if not np.any(mask):
-                logging.warn("No class labels in percentile %d", i)
-                continue
-
-            metrics.append(
-                SubsetMetric(
+    def _get_accuracy_at_k_with_mask(self, k, is_multilabel: bool, mask, name: str) -> tf.keras.metrics.Metric:
+        if is_multilabel:
+            return MultilabelNestedMetric(
+                nested_metric=SubsetMetric(
                     dataset_mask=mask,
                     nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(
                         k=k, name=name
                     ),
-                    name=name,
-                )
+                ),
+                name=name,
+            )
+        else:
+            return SubsetMetric(
+                dataset_mask=mask,
+                nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(
+                    k=k, name=name
+                ),
+                name=name,
             )
 
-        return metrics
+
+    def _get_mask_for_percentile(self, p, use_cumulative: bool):
+        if use_cumulative:
+            mask = np.where(
+                (self.cpercentile_ranks > self.percentile_steps[p])
+                & (self.cpercentile_ranks <= self.percentile_steps[p + 1]),
+                True,
+                False,
+            )
+        else:
+            mask = np.where(
+                (self.frequency_ranks > self.percentiles[p])
+                & (self.frequency_ranks <= self.percentiles[p + 1]),
+                True,
+                False,
+            )
+        if not np.any(mask):
+            logging.warn("No class labels in percentile %d", p)
+
+        return mask
 
     def _init_percentiles(self):
         num_classes = len(self.y_vocab)
@@ -230,14 +235,25 @@ class PercentileSubsetMetricHelper:
         self.frequencies = absolute_class_frequencies / np.sum(
             absolute_class_frequencies
         )
-        sorted_frequencies = self.frequencies.argsort()
-        self.frequency_ranks = np.empty_like(sorted_frequencies)
-        self.frequency_ranks[sorted_frequencies] = np.arange(len(self.frequencies))
+        self.frequency_ranks = np.empty_like(self.frequencies.argsort())
+        self.frequency_ranks[self.frequencies.argsort()] = np.arange(
+            len(self.frequencies)
+        )
+        self._init_percentile_values()
+        self._init_cpercentiles()
+
+    def _init_percentile_values(self):
         self.percentile_steps = [
             100 * i / self.num_percentiles for i in range(self.num_percentiles + 1)
         ]
         self.percentiles = np.percentile(self.frequency_ranks, self.percentile_steps)
         self.percentiles[0] = -1
+        self.percentile_steps[0] = -1
+
+    def _init_cpercentiles(self):
+        sorted_frequencies = self.frequencies[self.frequencies.argsort()]
+        self.cfrequencies = np.cumsum(sorted_frequencies)[self.frequency_ranks]
+        self.cpercentile_ranks = (self.cfrequencies - 0.5 * self.frequencies) * 100
 
     def _log_percentile_mapping_to_mlflow(self):
         percentile_mapping = self._create_percentile_mapping()
@@ -257,6 +273,12 @@ class PercentileSubsetMetricHelper:
                     for (name, idx) in self.y_vocab.items()
                     if self.frequency_ranks[idx] > self.percentiles[i]
                     and self.frequency_ranks[idx] <= self.percentiles[i + 1]
+                ],
+                "cpercentile_classes": [
+                    name
+                    for (name, idx) in self.y_vocab.items()
+                    if self.cpercentile_ranks[idx] > self.percentile_steps[i]
+                    and self.cpercentile_ranks[idx] <= self.percentile_steps[i + 1]
                 ],
             }
         return percentile_mapping

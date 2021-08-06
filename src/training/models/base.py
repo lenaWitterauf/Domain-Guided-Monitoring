@@ -103,7 +103,10 @@ class BaseModel:
                     ),
                     self.embedding_layer,
                     self._get_rnn_layer(),
-                    tf.keras.layers.Dense(len(metadata.y_vocab), activation=self.config.final_activation_function),
+                    tf.keras.layers.Dense(
+                        len(metadata.y_vocab),
+                        activation=self.config.final_activation_function,
+                    ),
                 ]
             )
 
@@ -141,7 +144,7 @@ class BaseModel:
 
             model_summary = []
             self.prediction_model.summary(print_fn=lambda x: model_summary.append(x))
-            mlflow.log_text("\n".join(model_summary), artifact_file='model_summary.txt')
+            mlflow.log_text("\n".join(model_summary), artifact_file="model_summary.txt")
 
             self.history = self.prediction_model.fit(
                 train_dataset,
@@ -165,9 +168,7 @@ class BaseModel:
             tf.keras.metrics.AUC(),
         ]
         self.prediction_model.compile(
-            loss=self.config.loss,
-            optimizer=tf.optimizers.Adam(),
-            metrics=self.metrics,
+            loss=self.config.loss, optimizer=tf.optimizers.Adam(), metrics=self.metrics,
         )
 
     def _compile_multilabel(self, train_dataset: tf.data.Dataset):
@@ -187,20 +188,34 @@ class BaseModel:
             MultilabelNestedMetric(
                 nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=20),
                 name="top_20_categorical_accuracy",
-            )
+            ),
         ]
-        metric_helper = PercentileSubsetMetricHelper(train_dataset, num_percentiles=self.config.metrics_num_percentiles, y_vocab=self.metadata.y_vocab)
+        metric_helper = PercentileSubsetMetricHelper(
+            train_dataset,
+            num_percentiles=self.config.metrics_num_percentiles,
+            y_vocab=self.metadata.y_vocab,
+        )
         for k in [5, 10, 20]:
-            self.metrics = self.metrics + metric_helper.get_multilabel_accuracy_at_k_for_percentiles(k=k)
+            self.metrics = (
+                self.metrics
+                + metric_helper.get_accuracy_at_k_for(
+                    k=k, is_multilabel=True, use_cumulative=True
+                )
+                + metric_helper.get_accuracy_at_k_for(
+                    k=k, is_multilabel=True, use_cumulative=False
+                )
+            )
 
         self.prediction_model.compile(
-            loss=self.config.loss,
-            optimizer=tf.optimizers.Adam(),
-            metrics=self.metrics,
+            loss=self.config.loss, optimizer=tf.optimizers.Adam(), metrics=self.metrics,
         )
 
     def _compile_multiclass(self, train_dataset: tf.data.Dataset):
-        metric_helper = PercentileSubsetMetricHelper(train_dataset, num_percentiles=self.config.metrics_num_percentiles, y_vocab=self.metadata.y_vocab)
+        metric_helper = PercentileSubsetMetricHelper(
+            train_dataset,
+            num_percentiles=self.config.metrics_num_percentiles,
+            y_vocab=self.metadata.y_vocab,
+        )
         self.metrics = [
             tf.keras.metrics.CategoricalAccuracy(),
             tf.keras.metrics.TopKCategoricalAccuracy(
@@ -214,11 +229,17 @@ class BaseModel:
             ),
         ]
         for k in [5, 10, 20]:
-            self.metrics = self.metrics + metric_helper.get_accuracy_at_k_for_percentiles(k=k)
+            self.metrics = (
+                self.metrics
+                + metric_helper.get_accuracy_at_k_for(
+                    k=k, is_multilabel=False, use_cumulative=True
+                )
+                + metric_helper.get_accuracy_at_k_for(
+                    k=k, is_multilabel=False, use_cumulative=False
+                )
+            )
 
         self.prediction_model.compile(
-            loss=self.config.loss,
-            optimizer=tf.optimizers.Adam(),
-            metrics=self.metrics,
+            loss=self.config.loss, optimizer=tf.optimizers.Adam(), metrics=self.metrics,
         )
 

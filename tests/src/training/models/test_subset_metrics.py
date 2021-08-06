@@ -45,14 +45,16 @@ class TestSubsetMetrics(unittest.TestCase):
             percentile_mapping,
             {
                 0: {
-                    "percentile_steps": [0.0, 50.0],
+                    "percentile_steps": [-1, 50.0],
                     "percentile_values": [-1.0, 1.0],
                     "percentile_classes": ["y1", "y2",],
+                    "cpercentile_classes": ["y1", "y2",],
                 },
                 1: {
                     "percentile_steps": [50.0, 100.0],
                     "percentile_values": [1.0, 2.0],
                     "percentile_classes": ["y0",],
+                    "cpercentile_classes": ["y0",],
                 },
             },
         )
