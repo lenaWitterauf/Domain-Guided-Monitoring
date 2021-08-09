@@ -28,6 +28,7 @@ class SimpleEmbedding(tf.keras.Model, BaseEmbedding):
             trainable=self.config.base_feature_embeddings_trainable,
             name="simple_embedding/basic_feature_embeddings",
             shape=(self.num_features, self.config.embedding_dim),
+            regularizer=super()._get_kernel_regularizer(scope="base_embeddings"),
         )
         self.basic_hidden_embeddings = None
 
@@ -43,6 +44,6 @@ class SimpleEmbedding(tf.keras.Model, BaseEmbedding):
 class SimpleModel(BaseModel):
     def _get_embedding_layer(
         self, metadata: SequenceMetadata, knowledge: BaseKnowledge,
-    ) -> tf.keras.Model:
+    ) -> SimpleEmbedding:
         return SimpleEmbedding(knowledge, self.config)
 

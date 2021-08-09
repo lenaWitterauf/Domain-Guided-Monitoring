@@ -1,3 +1,4 @@
+from tensorflow.python.keras.layers.core import Dropout
 from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
 from typing import Any, List, Dict
@@ -28,6 +29,19 @@ class BaseEmbedding:
     def _final_embedding_matrix(self):
         """Overwrite this in case embedding uses attention mechanism etc"""
         return self.basic_feature_embeddings
+
+    def _get_kernel_regularizer(self, scope: str):
+        if scope not in self.config.kernel_regularizer_scope:
+            logging.debug("Regularization not enabled for %s", scope)
+            return None
+        elif self.config.kernel_regularizer_value <= 0.0:
+            return None
+        elif self.config.kernel_regularizer_type == "l2":
+            return tf.keras.regularizers.l2(self.config.kernel_regularizer_value)
+        elif self.config.kernel_regularizer_type == "l2":
+            return tf.keras.regularizers.l1(self.config.kernel_regularizer_value)
+        else:
+            return None
 
     def _get_initializer(
         self,
@@ -67,13 +81,13 @@ class BaseEmbedding:
 class BaseModel:
     def __init__(self):
         self.prediction_model: tf.keras.Model = None
-        self.embedding_layer: tf.keras.Model = None
+        self.embedding_layer: BaseEmbedding = None
         self.metrics: List[tf.keras.metrics.Metric] = []
         self.config = ModelConfig()
 
     def _get_embedding_layer(
         self, metadata: SequenceMetadata, knowledge: Any
-    ) -> tf.keras.Model:
+    ) -> BaseEmbedding:
         raise NotImplementedError("This should be implemented by the subclass!!!")
 
     def _select_distribute_strategy(self) -> tf.distribute.Strategy:
@@ -103,9 +117,15 @@ class BaseModel:
                     ),
                     self.embedding_layer,
                     self._get_rnn_layer(),
+                    tf.keras.layers.Dropout(
+                        rate=self.config.dropout_rate, seed=self.config.dropout_seed
+                    ),
                     tf.keras.layers.Dense(
                         len(metadata.y_vocab),
                         activation=self.config.final_activation_function,
+                        kernel_regularizer=self.embedding_layer._get_kernel_regularizer(
+                            scope="prediction_dense"
+                        ),
                     ),
                 ]
             )
@@ -119,11 +139,26 @@ class BaseModel:
 
     def _get_rnn_layer(self):
         if self.config.rnn_type == "rnn":
-            return tf.keras.layers.SimpleRNN(units=self.config.rnn_dim)
+            return tf.keras.layers.SimpleRNN(
+                units=self.config.rnn_dim,
+                kernel_regularizer=self.embedding_layer._get_kernel_regularizer(
+                    scope="prediction_rnn"
+                ),
+            )
         elif self.config.rnn_type == "lstm":
-            return tf.keras.layers.LSTM(units=self.config.rnn_dim)
+            return tf.keras.layers.LSTM(
+                units=self.config.rnn_dim,
+                kernel_regularizer=self.embedding_layer._get_kernel_regularizer(
+                    scope="prediction_rnn"
+                ),
+            )
         elif self.config.rnn_type == "gru":
-            return tf.keras.layers.GRU(units=self.config.rnn_dim)
+            return tf.keras.layers.GRU(
+                units=self.config.rnn_dim,
+                kernel_regularizer=self.embedding_layer._get_kernel_regularizer(
+                    scope="prediction_rnn"
+                ),
+            )
         else:
             logging.error("Unknown rnn layer type: %s", self.config.rnn_type)
 

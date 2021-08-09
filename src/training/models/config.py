@@ -23,6 +23,13 @@ class ModelConfig:
     metrics_num_percentiles: int = 5
     final_activation_function: str = "softmax"
     loss: str = "binary_crossentropy"
+    dropout_rate: float = 0.5
+    dropout_seed: int = 12345
+    kernel_regularizer_type: str = "l2"
+    kernel_regularizer_value: float = 0.001
+    kernel_regularizer_scope: List[str] = dataclasses.field(
+        default_factory=lambda: ["attention", "prediction_dense", "conv"]
+    )
 
 
 @dataclass_cli.add

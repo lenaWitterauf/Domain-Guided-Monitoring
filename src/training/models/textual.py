@@ -16,5 +16,5 @@ class DescriptionEmbedding(KnowledgeEmbedding):
 class DescriptionModel(BaseModel):
     def _get_embedding_layer(
         self, metadata: SequenceMetadata, knowledge: DescriptionKnowledge
-    ) -> tf.keras.Model:
+    ) -> DescriptionEmbedding:
         return DescriptionEmbedding(knowledge, self.config)

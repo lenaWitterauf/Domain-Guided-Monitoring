@@ -82,6 +82,7 @@ class DescriptionPaperEmbedding(tf.keras.Model, BaseEmbedding):
                     descriptions.max_description_length,
                     self.basic_feature_embeddings.shape[2],
                 ),
+                kernel_regularizer=super()._get_kernel_regularizer(scope="conv"),
             )
             for kernel_size in self.textual_config.kernel_sizes
         }
@@ -125,7 +126,7 @@ class DescriptionPaperEmbedding(tf.keras.Model, BaseEmbedding):
 class DescriptionPaperModel(BaseModel):
     def _get_embedding_layer(
         self, metadata: SequenceMetadata, knowledge: DescriptionKnowledge
-    ) -> tf.keras.Model:
+    ) -> DescriptionPaperEmbedding:
         return DescriptionPaperEmbedding(
             knowledge, self.config, textual_config=TextualPaperModelConfig()
         )

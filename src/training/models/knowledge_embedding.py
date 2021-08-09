@@ -21,9 +21,14 @@ class KnowledgeEmbedding(BaseEmbedding, tf.keras.Model):
         )
 
         self.w = tf.keras.layers.Dense(
-            self.config.attention_dim, use_bias=True, activation="tanh"
+            self.config.attention_dim,
+            use_bias=True,
+            activation="tanh",
+            kernel_regularizer=super()._get_kernel_regularizer(scope="attention"),
         )
-        self.u = tf.keras.layers.Dense(1, use_bias=False)
+        self.u = tf.keras.layers.Dense(
+            1, use_bias=False, kernel_regularizer=super()._get_kernel_regularizer(scope="attention")
+        )
 
         self._init_basic_embedding_variables(knowledge)
         self._init_connection_information(knowledge)
@@ -37,6 +42,7 @@ class KnowledgeEmbedding(BaseEmbedding, tf.keras.Model):
             trainable=self.config.base_feature_embeddings_trainable,
             name="{}/basic_feature_embeddings".format(self.embedding_name),
             shape=(self.num_features, self.config.embedding_dim),
+            regularizer=super()._get_kernel_regularizer(scope="base_embeddings"),
         )
         self.basic_hidden_embeddings = self.add_weight(
             initializer=self._get_hidden_initializer(
@@ -45,6 +51,7 @@ class KnowledgeEmbedding(BaseEmbedding, tf.keras.Model):
             trainable=self.config.base_hidden_embeddings_trainable,
             name="{}/basic_hidden_embeddings".format(self.embedding_name),
             shape=(self.num_hidden_features, self.config.embedding_dim),
+            regularizer=super()._get_kernel_regularizer(scope="base_embeddings"),
         )
 
     def _init_connection_information(self, knowledge: BaseKnowledge):

@@ -16,5 +16,5 @@ class CausalityEmbedding(KnowledgeEmbedding):
 class CausalityModel(BaseModel):
     def _get_embedding_layer(
         self, metadata: SequenceMetadata, knowledge: CausalityKnowledge
-    ) -> tf.keras.Model:
+    ) -> CausalityEmbedding:
         return CausalityEmbedding(knowledge, self.config)

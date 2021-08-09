@@ -14,5 +14,5 @@ class GramEmbedding(KnowledgeEmbedding):
 class GramModel(BaseModel):
     def _get_embedding_layer(
         self, metadata: SequenceMetadata, knowledge: HierarchyKnowledge
-    ) -> tf.keras.Model:
+    ) -> GramEmbedding:
         return GramEmbedding(knowledge, self.config)
