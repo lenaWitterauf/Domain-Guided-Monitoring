@@ -28,7 +28,7 @@ class ModelConfig:
     kernel_regularizer_type: str = "l2"
     kernel_regularizer_value: float = 0.001
     kernel_regularizer_scope: List[str] = dataclasses.field(
-        default_factory=lambda: ["attention", "prediction_dense", "conv"]
+        default_factory=lambda: []
     )
 
 

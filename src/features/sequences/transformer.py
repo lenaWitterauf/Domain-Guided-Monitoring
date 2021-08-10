@@ -17,6 +17,7 @@ class SequenceMetadata:
         max_features_per_sequence,
         x_vocab,
         y_vocab,
+        full_y_prediction,
     ):
         self.max_x_length: int = max_x_length
         self.max_sequence_length: int = max_sequence_length
@@ -24,6 +25,7 @@ class SequenceMetadata:
         self.max_features_per_sequence: int = max_features_per_sequence
         self.x_vocab: Dict[str, int] = x_vocab
         self.y_vocab: Dict[str, int] = y_vocab
+        self.full_y_prediction: bool = full_y_prediction
 
 
 class TrainTestSplit:
@@ -38,7 +40,7 @@ class TrainTestSplit:
 class _SplittedSequence:
     def __init__(self):
         self.x: List[List[str]] = []
-        self.y: List[str] = []
+        self.y: List[List[str]] = []
         self.x_vecs_stacked: tf.Tensor = None
         self.y_vec: tf.Tensor = None
 
@@ -47,8 +49,7 @@ class NextSequenceTransformer:
     """Split Sequences for next sequence prediction."""
 
     def __init__(
-        self,
-        config: SequenceConfig,
+        self, config: SequenceConfig,
     ):
         self.config = config
 
@@ -56,9 +57,9 @@ class NextSequenceTransformer:
         self, sequence_df: pd.DataFrame, sequence_column_name: str
     ) -> SequenceMetadata:
         (x_vocab, y_vocab) = self._generate_vocabs(sequence_df, sequence_column_name)
-        max_sequence_length = min(
-            self.config.max_window_size, sequence_df[sequence_column_name].apply(len).max() - 1
-        )
+        max_sequence_length = sequence_df[sequence_column_name].apply(len).max() - 1
+        if not self.config.predict_full_y_sequence:
+            max_sequence_length = min(self.config.max_window_size, max_sequence_length)
         max_features_per_time = (
             sequence_df[sequence_column_name]
             .apply(lambda list: max([len(sublist) for sublist in list]))
@@ -68,13 +69,16 @@ class NextSequenceTransformer:
 
         return SequenceMetadata(
             max_x_length=(
-                max_sequence_length if self.config.flatten_x else max_features_per_sequence
+                max_sequence_length
+                if self.config.flatten_x
+                else max_features_per_sequence
             ),
             max_sequence_length=max_sequence_length,
             max_features_per_time=max_features_per_time,
             max_features_per_sequence=max_features_per_sequence,
             x_vocab=x_vocab,
             y_vocab=y_vocab,
+            full_y_prediction = self.config.predict_full_y_sequence
         )
 
     def transform_train_test_split(
@@ -164,15 +168,31 @@ class NextSequenceTransformer:
             for splitted_sequence in splitted_sequences:
                 yield splitted_sequence
 
-    def _split_sequence(self, sequence: List[List[str]]) -> Generator[_SplittedSequence, None, None]:
+    def _split_sequence(
+        self, sequence: List[List[str]]
+    ) -> Generator[_SplittedSequence, None, None]:
+        if self.config.predict_full_y_sequence:
+            return self._split_sequence_full_window(sequence)
         if self.config.window_overlap:
             return self._split_sequence_overlap(sequence)
         else:
             return self._split_sequence_no_overlap(sequence)
 
-    def _split_sequence_overlap(self, sequence: List[List[str]]) -> Generator[_SplittedSequence, None, None]:
+    def _split_sequence_full_window(
+        self, sequence: List[List[str]]
+    ) -> Generator[_SplittedSequence, None, None]:
+        splitted_sequence = _SplittedSequence()
+        splitted_sequence.x = sequence[: len(sequence) - 1]
+        splitted_sequence.y = sequence[1 : len(sequence)]
+        yield splitted_sequence
+
+    def _split_sequence_overlap(
+        self, sequence: List[List[str]]
+    ) -> Generator[_SplittedSequence, None, None]:
         for start_index in range(0, len(sequence)):
-            max_end_index = min(start_index + self.config.max_window_size + 1, len(sequence))
+            max_end_index = min(
+                start_index + self.config.max_window_size + 1, len(sequence)
+            )
             min_end_index = (
                 start_index + self.config.min_window_size
                 if self.config.allow_subwindows or start_index == 0
@@ -190,7 +210,9 @@ class NextSequenceTransformer:
                 for splitted_sequence in splitted_sequences:
                     yield splitted_sequence
 
-    def _split_sequence_no_overlap(self, sequence: List[List[str]]) -> Generator[_SplittedSequence, None, None]:
+    def _split_sequence_no_overlap(
+        self, sequence: List[List[str]]
+    ) -> Generator[_SplittedSequence, None, None]:
         start_index = 0
         max_start_index = len(sequence) - 1 - self.config.min_window_size
         while start_index <= max_start_index:
@@ -212,7 +234,7 @@ class NextSequenceTransformer:
     ) -> List[_SplittedSequence]:
         splitted_sequence = _SplittedSequence()
         splitted_sequence.x = sequence[start_index:end_index]
-        splitted_sequence.y = sequence[end_index]
+        splitted_sequence.y = [sequence[end_index]]
         return [splitted_sequence]
 
     def _split_sequence_y_wide(
@@ -223,7 +245,7 @@ class NextSequenceTransformer:
         for feature in set(y_features):
             splitted_sequence = _SplittedSequence()
             splitted_sequence.x = sequence[start_index:end_index]
-            splitted_sequence.y = [feature]
+            splitted_sequence.y = [[feature]]
             splitted_sequences.append(splitted_sequence)
 
         return splitted_sequences
@@ -244,10 +266,10 @@ class NextSequenceTransformer:
         max_sequence_length: int,
     ) -> tf.Tensor:
         x_vecs = []
-        for _ in range(max_sequence_length - len(x_features)):
-            x_vecs.append(self._transform_to_tensor([], x_vocab))
         for x in x_features:
             x_vecs.append(self._transform_to_tensor(x, x_vocab))
+        for _ in range(max_sequence_length - len(x_features)):
+            x_vecs.append(self._transform_to_tensor([], x_vocab))
         return tf.stack(x_vecs)
 
     def _translate_and_pad_x_wide(
@@ -258,17 +280,22 @@ class NextSequenceTransformer:
     ) -> tf.Tensor:
         all_features = [feature for x in x_features for feature in x]
         x_vecs = []
-        for _ in range(max_features_per_sequence - len(all_features)):
-            x_vecs.append(self._transform_to_tensor([], x_vocab))
         for feature in all_features:
             x_vecs.append(self._transform_to_tensor([feature], x_vocab))
+        for _ in range(max_features_per_sequence - len(all_features)):
+            x_vecs.append(self._transform_to_tensor([], x_vocab))
         return tf.stack(x_vecs)
 
     def _translate_and_pad_generator(
-        self, x: List[List[str]], y: List[str], metadata: SequenceMetadata
+        self, x: List[List[str]], y: List[List[str]], metadata: SequenceMetadata
     ):
-
-        y_vec = self._transform_to_tensor(y, metadata.y_vocab)
+        y_vec = (
+            self._translate_and_pad_x_flat(
+                y, metadata.y_vocab, metadata.max_sequence_length
+            )
+            if self.config.predict_full_y_sequence
+            else self._transform_to_tensor(y[0], metadata.y_vocab)
+        )
         if self.config.flatten_x:
             x_vecs_stacked = self._translate_and_pad_x_flat(
                 x, metadata.x_vocab, metadata.max_sequence_length
@@ -282,7 +309,9 @@ class NextSequenceTransformer:
     def _translate_and_pad(
         self, splitted: _SplittedSequence, metadata: SequenceMetadata
     ):
-        x_vecs_stacked, y_vec = self._translate_and_pad_generator(splitted.x, splitted.y, metadata)
+        x_vecs_stacked, y_vec = self._translate_and_pad_generator(
+            splitted.x, splitted.y, metadata
+        )
         splitted.x_vecs_stacked = x_vecs_stacked
         splitted.y_vec = y_vec
 
@@ -313,7 +342,7 @@ class NextSequenceTransformer:
         vocab = {}
         index = 0
         for feature in features:
-            if len(feature) == 0 or feature.lower() == 'nan':
+            if len(feature) == 0 or feature.lower() == "nan":
                 continue
             vocab[feature] = index
             index = index + 1
@@ -351,34 +380,57 @@ class NextPartialSequenceTransformer(NextSequenceTransformer):
 
         return (x_vocab, y_vocab)
 
-    def _split_sequence(self, sequence: List[List[str]]) -> Generator[_SplittedSequence, None, None]:
+    def _split_sequence(
+        self, sequence: List[List[str]]
+    ) -> Generator[_SplittedSequence, None, None]:
         splitted_sequence_generator = super()._split_sequence(sequence)
-        should_remove_empty_y_vecs = self.config.remove_empty_y_vecs and len(self.valid_y_features) > 0
-        should_remove_empty_x_vecs = self.config.remove_empty_x_vecs and len(self.valid_x_features) > 0
+        should_remove_empty_y_vecs = (
+            self.config.remove_empty_y_vecs
+            and len(self.valid_y_features) > 0
+            and not self.config.predict_full_y_sequence
+        )
+        should_remove_empty_x_vecs = (
+            self.config.remove_empty_x_vecs
+            and len(self.valid_x_features) > 0
+            and not self.config.predict_full_y_sequence
+        )
         for splitted_sequence in splitted_sequence_generator:
-            if should_remove_empty_y_vecs and set(splitted_sequence.y).isdisjoint(self.valid_y_features):
+            if should_remove_empty_y_vecs and set(splitted_sequence.y[0]).isdisjoint(
+                self.valid_y_features
+            ):
                 continue
             if should_remove_empty_x_vecs:
-                splitted_sequence.x = [x for x in splitted_sequence.x if not set(x).isdisjoint(self.valid_x_features)]
+                splitted_sequence.x = [
+                    x
+                    for x in splitted_sequence.x
+                    if not set(x).isdisjoint(self.valid_x_features)
+                ]
             if len(splitted_sequence.x) > 0:
                 yield splitted_sequence
 
 
 class NextPartialSequenceTransformerFromDataframe(NextPartialSequenceTransformer):
     """Split Sequences for next sequence prediction, but only keep some of the features as prediciton goals."""
+
     def _generate_vocabs(
         self, sequence_df: pd.DataFrame, sequence_column_name: str
     ) -> Tuple[Dict[str, int], Dict[str, int]]:
         x_vocab = self._generate_vocab(
             sequence_df,
             self.config.x_sequence_column_name
-            if (self.config.x_sequence_column_name is not None and len(self.config.x_sequence_column_name) > 0)
+            if (
+                self.config.x_sequence_column_name is not None
+                and len(self.config.x_sequence_column_name) > 0
+            )
             else sequence_column_name,
         )
         y_vocab = self._generate_vocab(
             sequence_df,
             self.config.y_sequence_column_name
-            if (self.config.y_sequence_column_name is not None and len(self.config.y_sequence_column_name) > 0)
+            if (
+                self.config.y_sequence_column_name is not None
+                and len(self.config.y_sequence_column_name) > 0
+            )
             else sequence_column_name,
         )
 

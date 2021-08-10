@@ -1,4 +1,4 @@
-from tensorflow.python.keras.layers.core import Dropout
+from tensorflow.python.keras.layers.core import Dropout, Masking
 from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
 from typing import Any, List, Dict
@@ -16,6 +16,13 @@ import logging
 import mlflow
 import datetime
 
+def full_prediction_binary_accuracy_loss(y_true, y_pred):
+    sum = tf.reduce_sum(y_true, axis=-1)
+    weights = tf.where(sum>1, x=1., y=sum)
+    weights = tf.cast(weights, dtype='float32')
+    loss = tf.keras.losses.binary_crossentropy(y_true, y_pred)
+    loss = tf.reduce_mean(weights * loss, axis=-1)
+    return tf.reduce_sum(loss)
 
 class BaseEmbedding:
     config: ModelConfig
@@ -116,6 +123,7 @@ class BaseModel:
                         shape=(metadata.max_x_length, len(metadata.x_vocab))
                     ),
                     self.embedding_layer,
+                    tf.keras.layers.Masking(mask_value=0),
                     self._get_rnn_layer(),
                     tf.keras.layers.Dropout(
                         rate=self.config.dropout_rate, seed=self.config.dropout_seed
@@ -144,6 +152,7 @@ class BaseModel:
                 kernel_regularizer=self.embedding_layer._get_kernel_regularizer(
                     scope="prediction_rnn"
                 ),
+                return_sequences=self.metadata.full_y_prediction,
             )
         elif self.config.rnn_type == "lstm":
             return tf.keras.layers.LSTM(
@@ -151,6 +160,7 @@ class BaseModel:
                 kernel_regularizer=self.embedding_layer._get_kernel_regularizer(
                     scope="prediction_rnn"
                 ),
+                return_sequences=self.metadata.full_y_prediction,
             )
         elif self.config.rnn_type == "gru":
             return tf.keras.layers.GRU(
@@ -158,6 +168,7 @@ class BaseModel:
                 kernel_regularizer=self.embedding_layer._get_kernel_regularizer(
                     scope="prediction_rnn"
                 ),
+                return_sequences=self.metadata.full_y_prediction,
             )
         else:
             logging.error("Unknown rnn layer type: %s", self.config.rnn_type)
@@ -170,7 +181,9 @@ class BaseModel:
         n_epochs: int,
     ):
         with self.strategy.scope():
-            if len(self.metadata.y_vocab) == 1:
+            if self.metadata.full_y_prediction:
+                self._compile_full_prediction(train_dataset)
+            elif len(self.metadata.y_vocab) == 1:
                 self._compile_singleclass()
             elif multilabel_classification:
                 self._compile_multilabel(train_dataset)
@@ -207,29 +220,78 @@ class BaseModel:
             loss=self.config.loss, optimizer=tf.optimizers.Adam(), metrics=self.metrics,
         )
 
-    def _compile_multilabel(self, train_dataset: tf.data.Dataset):
+    def _compile_full_prediction(self, train_dataset: tf.data.Dataset):
         self.metrics = [
             MultilabelNestedMetric(
                 nested_metric=tf.keras.metrics.CategoricalAccuracy(),
                 name="categorical_accuracy",
+                full_prediction=self.metadata.full_y_prediction,
             ),
             MultilabelNestedMetric(
                 nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=5),
                 name="top_5_categorical_accuracy",
+                full_prediction=self.metadata.full_y_prediction,
             ),
             MultilabelNestedMetric(
                 nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=10),
                 name="top_10_categorical_accuracy",
+                full_prediction=self.metadata.full_y_prediction,
             ),
             MultilabelNestedMetric(
                 nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=20),
                 name="top_20_categorical_accuracy",
+                full_prediction=self.metadata.full_y_prediction,
             ),
         ]
         metric_helper = PercentileSubsetMetricHelper(
             train_dataset,
             num_percentiles=self.config.metrics_num_percentiles,
             y_vocab=self.metadata.y_vocab,
+            full_prediction=self.metadata.full_y_prediction,
+        )
+        for k in [5, 10, 20]:
+            self.metrics = (
+                self.metrics
+                + metric_helper.get_accuracy_at_k_for(
+                    k=k, is_multilabel=True, use_cumulative=True
+                )
+                + metric_helper.get_accuracy_at_k_for(
+                    k=k, is_multilabel=True, use_cumulative=False
+                )
+            )
+
+        self.prediction_model.compile(
+            loss=full_prediction_binary_accuracy_loss, optimizer=tf.optimizers.Adam(), metrics=self.metrics,
+        )
+
+    def _compile_multilabel(self, train_dataset: tf.data.Dataset):
+        self.metrics = [
+            MultilabelNestedMetric(
+                nested_metric=tf.keras.metrics.CategoricalAccuracy(),
+                name="categorical_accuracy",
+                full_prediction=self.metadata.full_y_prediction,
+            ),
+            MultilabelNestedMetric(
+                nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=5),
+                name="top_5_categorical_accuracy",
+                full_prediction=self.metadata.full_y_prediction,
+            ),
+            MultilabelNestedMetric(
+                nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=10),
+                name="top_10_categorical_accuracy",
+                full_prediction=self.metadata.full_y_prediction,
+            ),
+            MultilabelNestedMetric(
+                nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=20),
+                name="top_20_categorical_accuracy",
+                full_prediction=self.metadata.full_y_prediction,
+            ),
+        ]
+        metric_helper = PercentileSubsetMetricHelper(
+            train_dataset,
+            num_percentiles=self.config.metrics_num_percentiles,
+            y_vocab=self.metadata.y_vocab,
+            full_prediction=self.metadata.full_y_prediction,
         )
         for k in [5, 10, 20]:
             self.metrics = (
@@ -251,6 +313,7 @@ class BaseModel:
             train_dataset,
             num_percentiles=self.config.metrics_num_percentiles,
             y_vocab=self.metadata.y_vocab,
+            full_prediction=self.metadata.full_y_prediction,
         )
         self.metrics = [
             tf.keras.metrics.CategoricalAccuracy(),

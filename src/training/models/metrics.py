@@ -1,3 +1,4 @@
+from numpy.core.numeric import full
 import tensorflow as tf
 import numpy as np
 from typing import Dict, Any, List
@@ -87,11 +88,15 @@ class MulticlassTrueNegativeRate(MulticlassMetric):
 
 
 class MultilabelNestedMetric(tf.keras.metrics.Metric):
-    def __init__(self, nested_metric: tf.keras.metrics.Metric, *args, **kwargs):
+    def __init__(self, nested_metric: tf.keras.metrics.Metric, full_prediction: bool, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.nested_metric = nested_metric
+        self.full_prediction = full_prediction
 
     def update_state(self, y_true, y_pred, sample_weight=None):
+        if self.full_prediction:
+            y_true = tf.reshape(y_true, (tf.shape(y_true)[0] * tf.shape(y_true)[1], tf.shape(y_true)[2]))
+            y_pred = tf.reshape(y_pred, (tf.shape(y_pred)[0] * tf.shape(y_pred)[1], tf.shape(y_pred)[2]))
         id_tensor = tf.eye(tf.shape(y_true)[1], dtype="int32")
         id_tensor_expanded = tf.reshape(
             tf.broadcast_to(
@@ -129,14 +134,19 @@ class SubsetMetric(tf.keras.metrics.Metric):
         self,
         dataset_mask: np.array,
         nested_metric: tf.keras.metrics.Metric,
+        full_prediction: bool,
         *args,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
         self.dataset_mask = dataset_mask
         self.nested_metric = nested_metric
+        self.full_prediction = full_prediction
 
-    def update_state(self, y_true, y_pred, sample_weight=None):
+    def update_state(self, y_true, y_pred, sample_weight=None):        
+        if self.full_prediction:
+            y_true = tf.reshape(y_true, (tf.shape(y_true)[0] * tf.shape(y_true)[1], tf.shape(y_true)[2]))
+            y_pred = tf.reshape(y_pred, (tf.shape(y_pred)[0] * tf.shape(y_pred)[1], tf.shape(y_pred)[2]))
         weights = tf.reduce_sum(tf.where(self.dataset_mask, x=y_true, y=0), axis=1)
         if sample_weight is not None:
             weights = weights * sample_weight
@@ -153,11 +163,12 @@ class SubsetMetric(tf.keras.metrics.Metric):
 
 class PercentileSubsetMetricHelper:
     def __init__(
-        self, dataset: tf.data.Dataset, num_percentiles: int, y_vocab: Dict[str, int]
+        self, dataset: tf.data.Dataset, num_percentiles: int, y_vocab: Dict[str, int], full_prediction: bool,
     ):
         self.dataset = dataset
         self.num_percentiles = num_percentiles
         self.y_vocab = y_vocab
+        self.full_prediction = full_prediction
         self._init_percentiles()
         self._log_percentile_mapping_to_mlflow()
 
@@ -189,7 +200,9 @@ class PercentileSubsetMetricHelper:
                     nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(
                         k=k, name=name
                     ),
+                    full_prediction=False,
                 ),
+                full_prediction=self.full_prediction,
                 name=name,
             )
         else:
@@ -198,6 +211,7 @@ class PercentileSubsetMetricHelper:
                 nested_metric=tf.keras.metrics.TopKCategoricalAccuracy(
                     k=k, name=name
                 ),
+                full_prediction=self.full_prediction,
                 name=name,
             )
 
@@ -228,7 +242,9 @@ class PercentileSubsetMetricHelper:
         for (_, y_true) in tqdm(
             self.dataset.as_numpy_iterator(),
             desc="Calculating percentile frequencies...",
-        ):
+        ):        
+            if self.full_prediction:
+                y_true = tf.reshape(y_true, (tf.shape(y_true)[0] * tf.shape(y_true)[1], tf.shape(y_true)[2]))
             next_sum = np.sum(y_true, axis=0,)
             absolute_class_frequencies = absolute_class_frequencies + next_sum
 

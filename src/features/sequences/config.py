@@ -22,3 +22,4 @@ class SequenceConfig:
     remove_empty_x_vecs: bool = True  # if true, removes (x) inputs where x is a zero vector
     x_sequence_column_name: str = ""
     y_sequence_column_name: str = ""
+    predict_full_y_sequence: bool = False
