@@ -22,7 +22,7 @@ def full_prediction_binary_accuracy_loss(y_true, y_pred):
     weights = tf.cast(weights, dtype='float32')
     loss = tf.keras.losses.binary_crossentropy(y_true, y_pred)
     loss = tf.reduce_mean(weights * loss, axis=-1)
-    return tf.reduce_sum(loss)
+    return tf.reduce_mean(loss)
 
 class BaseEmbedding:
     config: ModelConfig
