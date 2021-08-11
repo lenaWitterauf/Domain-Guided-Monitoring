@@ -217,7 +217,7 @@ class BaseModel:
             tf.keras.metrics.AUC(),
         ]
         self.prediction_model.compile(
-            loss=self.config.loss, optimizer=tf.optimizers.Adam(), metrics=self.metrics,
+            loss=self.config.loss, optimizer=self.config.optimizer, metrics=self.metrics,
         )
 
     def _compile_full_prediction(self, train_dataset: tf.data.Dataset):

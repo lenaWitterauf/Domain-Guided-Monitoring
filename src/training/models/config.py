@@ -23,6 +23,7 @@ class ModelConfig:
     metrics_num_percentiles: int = 5
     final_activation_function: str = "softmax"
     loss: str = "binary_crossentropy"
+    optimizer: str = "adam"
     dropout_rate: float = 0.5
     dropout_seed: int = 12345
     kernel_regularizer_type: str = "l2"
