@@ -8,6 +8,7 @@ from typing import List
 class ModelConfig:
     rnn_type: str = "lstm"
     rnn_dim: int = 32
+    rnn_dropout: float = 0.0
     embedding_dim: int = 16
     attention_dim: int = 16
     base_feature_embeddings_trainable: bool = True

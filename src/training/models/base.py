@@ -1,3 +1,4 @@
+from src.config import ExperimentConfig
 from tensorflow.python.keras.layers.core import Dropout, Masking
 from src.features.sequences.transformer import SequenceMetadata
 import tensorflow as tf
@@ -16,13 +17,15 @@ import logging
 import mlflow
 import datetime
 
+
 def full_prediction_binary_accuracy_loss(y_true, y_pred):
     sum = tf.reduce_sum(y_true, axis=-1)
-    weights = tf.where(sum>1, x=1., y=sum)
-    weights = tf.cast(weights, dtype='float32')
+    weights = tf.where(sum > 1, x=1.0, y=sum)
+    weights = tf.cast(weights, dtype="float32")
     loss = tf.keras.losses.binary_crossentropy(y_true, y_pred)
     loss = tf.reduce_sum(weights * loss, axis=1) / tf.reduce_sum(weights, axis=1)
     return tf.reduce_mean(loss)
+
 
 class BaseEmbedding:
     config: ModelConfig
@@ -120,7 +123,7 @@ class BaseModel:
             self.prediction_model = tf.keras.models.Sequential(
                 [
                     tf.keras.layers.Input(
-                        shape=(metadata.max_x_length, len(metadata.x_vocab))
+                        shape=(metadata.max_x_length, len(metadata.x_vocab)),
                     ),
                     self.embedding_layer,
                     tf.keras.layers.Masking(mask_value=0),
@@ -153,6 +156,7 @@ class BaseModel:
                     scope="prediction_rnn"
                 ),
                 return_sequences=self.metadata.full_y_prediction,
+                dropout=self.config.rnn_dropout,
             )
         elif self.config.rnn_type == "lstm":
             return tf.keras.layers.LSTM(
@@ -161,6 +165,7 @@ class BaseModel:
                     scope="prediction_rnn"
                 ),
                 return_sequences=self.metadata.full_y_prediction,
+                dropout=self.config.rnn_dropout,
             )
         elif self.config.rnn_type == "gru":
             return tf.keras.layers.GRU(
@@ -169,6 +174,7 @@ class BaseModel:
                     scope="prediction_rnn"
                 ),
                 return_sequences=self.metadata.full_y_prediction,
+                dropout=self.config.rnn_dropout,
             )
         else:
             logging.error("Unknown rnn layer type: %s", self.config.rnn_type)
@@ -217,7 +223,9 @@ class BaseModel:
             tf.keras.metrics.AUC(),
         ]
         self.prediction_model.compile(
-            loss=self.config.loss, optimizer=self.config.optimizer, metrics=self.metrics,
+            loss=self.config.loss,
+            optimizer=self.config.optimizer,
+            metrics=self.metrics,
         )
 
     def _compile_full_prediction(self, train_dataset: tf.data.Dataset):
@@ -261,7 +269,9 @@ class BaseModel:
             )
 
         self.prediction_model.compile(
-            loss=full_prediction_binary_accuracy_loss, optimizer=tf.optimizers.Adam(), metrics=self.metrics,
+            loss=full_prediction_binary_accuracy_loss,
+            optimizer=tf.optimizers.Adam(),
+            metrics=self.metrics,
         )
 
     def _compile_multilabel(self, train_dataset: tf.data.Dataset):
