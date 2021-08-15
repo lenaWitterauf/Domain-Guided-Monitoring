@@ -270,7 +270,7 @@ class BaseModel:
 
         self.prediction_model.compile(
             loss=full_prediction_binary_accuracy_loss,
-            optimizer=tf.optimizers.Adam(),
+            optimizer=self.config.optimizer,
             metrics=self.metrics,
         )
 
@@ -315,7 +315,9 @@ class BaseModel:
             )
 
         self.prediction_model.compile(
-            loss=self.config.loss, optimizer=tf.optimizers.Adam(), metrics=self.metrics,
+            loss=self.config.loss,
+            optimizer=self.config.optimizer,
+            metrics=self.metrics,
         )
 
     def _compile_multiclass(self, train_dataset: tf.data.Dataset):
@@ -349,6 +351,8 @@ class BaseModel:
             )
 
         self.prediction_model.compile(
-            loss=self.config.loss, optimizer=tf.optimizers.Adam(), metrics=self.metrics,
+            loss=self.config.loss,
+            optimizer=self.config.optimizer,
+            metrics=self.metrics,
         )
 
