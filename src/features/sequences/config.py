@@ -10,7 +10,7 @@ class SequenceConfig:
     random_test_split: bool = True  # if true, split randomly; if false, split after 1-test_percentage datapoints
     random_state: int = 12345  # seed used for random test split
     flatten_x: bool = True  # if true, produces one mulit-hot encoded vector per timestamp;
-    flatten_y: bool = False  #       if false, produces multiple (number of features in timestamp) one-hot encoded vectors per timestamp
+    flatten_y: bool = True  #       if false, produces multiple (number of features in timestamp) one-hot encoded vectors per timestamp
     max_window_size: int = 10  # max number of timestamps per prediction input
     min_window_size: int = 2  # min number of timestamps per prediction input
     window_overlap: bool = True  # if true, timestamps for different prediction inputs may overlap
@@ -23,3 +23,4 @@ class SequenceConfig:
     x_sequence_column_name: str = ""
     y_sequence_column_name: str = ""
     predict_full_y_sequence: bool = False
+    predict_full_y_sequence_wide: bool = False

@@ -58,7 +58,7 @@ class NextSequenceTransformer:
     ) -> SequenceMetadata:
         (x_vocab, y_vocab) = self._generate_vocabs(sequence_df, sequence_column_name)
         max_sequence_length = sequence_df[sequence_column_name].apply(len).max() - 1
-        if not self.config.predict_full_y_sequence:
+        if not self.config.predict_full_y_sequence and not self.config.predict_full_y_sequence_wide:
             max_sequence_length = min(self.config.max_window_size, max_sequence_length)
         max_features_per_time = (
             sequence_df[sequence_column_name]
@@ -171,9 +171,11 @@ class NextSequenceTransformer:
     def _split_sequence(
         self, sequence: List[List[str]]
     ) -> Generator[_SplittedSequence, None, None]:
-        if self.config.predict_full_y_sequence:
+        if self.config.predict_full_y_sequence_wide:
+            return self._split_sequence_full_window_wide(sequence)
+        elif self.config.predict_full_y_sequence:
             return self._split_sequence_full_window(sequence)
-        if self.config.window_overlap:
+        elif self.config.window_overlap:
             return self._split_sequence_overlap(sequence)
         else:
             return self._split_sequence_no_overlap(sequence)
@@ -185,6 +187,21 @@ class NextSequenceTransformer:
         splitted_sequence.x = sequence[: len(sequence) - 1]
         splitted_sequence.y = sequence[1 : len(sequence)]
         yield splitted_sequence
+
+    def _split_sequence_full_window_wide(
+        self, sequence: List[List[str]]
+    ) -> Generator[_SplittedSequence, None, None]:
+        for end_index in range(1, len(sequence)):
+            if self.config.flatten_y:
+                splitted_sequences = self._split_sequence_y_flat(
+                    sequence, start_index=0, end_index=end_index
+                )
+            else:
+                splitted_sequences = self._split_sequence_y_wide(
+                    sequence, start_index=0, end_index=end_index
+                )
+            for splitted_sequence in splitted_sequences:
+                yield splitted_sequence
 
     def _split_sequence_overlap(
         self, sequence: List[List[str]]
