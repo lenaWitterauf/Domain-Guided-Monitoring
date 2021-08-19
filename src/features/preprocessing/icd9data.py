@@ -81,9 +81,7 @@ class ICD9DataPreprocessor(Preprocessor):
             )
 
         max_parents = max([len(x) for x in children_to_parents.values()]) + 1
-        child_hierarchy = pd.DataFrame(
-            columns=["level_" + str(i) for i in range(max_parents)], dtype=str
-        )
+        child_hierarchy_records = []
         for child_code, parents in tqdm(
             children_to_parents.items(),
             desc="Converting icd9 hierarchy dict to dataframe",
@@ -96,11 +94,12 @@ class ICD9DataPreprocessor(Preprocessor):
             for parent_idx in range(len(parents)):
                 child_to_parents["level_" + str(parent_idx)] = parents[parent_idx]
 
-            child_hierarchy = child_hierarchy.append(
-                child_to_parents, ignore_index=True,
-            )
+            child_hierarchy_records.append(child_to_parents)
 
-        return child_hierarchy
+        return pd.DataFrame.from_records(
+            child_hierarchy_records,
+            columns=["level_" + str(i) for i in range(max_parents)],
+        ).astype(str)
 
     def _query_data(self) -> pd.DataFrame:
         logging.info("Starting to query ICD9 data")
@@ -129,6 +128,25 @@ class ICD9DataPreprocessor(Preprocessor):
                     url, max_retries - 1, timeout_s, error_timeout_s
                 )
 
+    def _get_direct_parent(self, default_parent: str, child_code: str):
+        splitted_child_code = child_code.split(".")
+        if len(splitted_child_code) == 1:
+            return default_parent
+
+        if len(splitted_child_code) > 2:
+            logging.error(
+                "ERROR! Code %s was splitted into more than two parts: %s",
+                child_code,
+                splitted_child_code,
+            )
+            return default_parent
+
+        code_ending = splitted_child_code[1]
+        if len(code_ending) == 1:
+            return splitted_child_code[0]
+        else:
+            return child_code[: len(child_code) - 1]
+
     def _query_leaf_hierarchy_from(self, parent_url, parent_name, parent_code):
         logging.debug("Querying ICD9 data from %s", parent_url)
         soup = self._open_url_gentle(parent_url)
@@ -143,6 +161,7 @@ class ICD9DataPreprocessor(Preprocessor):
                 "child_code",
             ]
         )
+        hierarchy_infos: Dict[str, Dict[str, str]] = {}
         definition_list = soup.find_all(class_="codeHierarchyUL")[0]
         for list_item in definition_list.find_all("li"):
             child_url = self.icd9data_base_url + list_item.a["href"]
@@ -150,17 +169,44 @@ class ICD9DataPreprocessor(Preprocessor):
                 0
             ].get_text()
             child_code = list_item.a.get_text()
-            hierarchy_df = hierarchy_df.append(
-                {
-                    "parent_url": parent_url,
-                    "parent_name": parent_name,
-                    "parent_code": parent_code,
-                    "child_url": child_url,
-                    "child_name": child_name,
-                    "child_code": child_code,
-                },
-                ignore_index=True,
-            )
+            hierarchy_infos[child_code] = {
+                "code": child_code,
+                "name": child_name,
+                "url": child_url,
+            }
+
+            direct_parent = self._get_direct_parent(parent_code, child_code)
+            if direct_parent != parent_code and direct_parent in hierarchy_infos:
+                hierarchy_df = hierarchy_df.append(
+                    {
+                        "parent_url": hierarchy_infos[direct_parent]["url"],
+                        "parent_name": hierarchy_infos[direct_parent]["name"],
+                        "parent_code": hierarchy_infos[direct_parent]["code"],
+                        "child_url": child_url,
+                        "child_name": child_name,
+                        "child_code": child_code,
+                    },
+                    ignore_index=True,
+                )
+            else:
+                if direct_parent != parent_code:
+                    logging.error(
+                        "Direct parent for child code %s is %s (default parent: %s), but it wasn't read yet.",
+                        child_code,
+                        direct_parent,
+                        parent_code,
+                    )
+                hierarchy_df = hierarchy_df.append(
+                    {
+                        "parent_url": parent_url,
+                        "parent_name": parent_name,
+                        "parent_code": parent_code,
+                        "child_url": child_url,
+                        "child_name": child_name,
+                        "child_code": child_code,
+                    },
+                    ignore_index=True,
+                )
         return hierarchy_df
 
     def _query_hierarchy_from(
