@@ -9,7 +9,7 @@ from .base import BaseEmbedding, BaseModel
 from .config import ModelConfig, TextualPaperModelConfig
 
 
-class DescriptionPaperEmbedding(tf.keras.Model, BaseEmbedding):
+class DescriptionPaperEmbedding(BaseEmbedding, tf.keras.Model):
     def __init__(
         self,
         descriptions: DescriptionKnowledge,
@@ -74,7 +74,7 @@ class DescriptionPaperEmbedding(tf.keras.Model, BaseEmbedding):
     def _init_convolution_layers(self, descriptions: DescriptionKnowledge):
         logging.info("Initializing Description convolution layers")
         conv_layers = {
-            kernel_size:tf.keras.layers.Conv1D(
+            kernel_size: tf.keras.layers.Conv1D(
                 filters=self.textual_config.num_filters,
                 kernel_size=kernel_size,
                 activation="relu",
@@ -82,13 +82,13 @@ class DescriptionPaperEmbedding(tf.keras.Model, BaseEmbedding):
                     descriptions.max_description_length,
                     self.basic_feature_embeddings.shape[2],
                 ),
-                kernel_regularizer=super()._get_kernel_regularizer(scope="conv"),
+                kernel_regularizer=super(DescriptionPaperEmbedding, self)._get_kernel_regularizer(scope="conv"),
             )
             for kernel_size in self.textual_config.kernel_sizes
         }
         pool_layers = {
-            kernel_size:tf.keras.layers.MaxPooling1D(
-                pool_size=descriptions.max_description_length-kernel_size+1, 
+            kernel_size: tf.keras.layers.MaxPooling1D(
+                pool_size=descriptions.max_description_length - kernel_size + 1,
                 strides=None,
             )
             for kernel_size in self.textual_config.kernel_sizes
@@ -100,9 +100,7 @@ class DescriptionPaperEmbedding(tf.keras.Model, BaseEmbedding):
         output = tf.keras.layers.Concatenate(axis=1)(
             [
                 tf.keras.layers.Flatten()(
-                    pool_layers[kernel_size](
-                        conv_layers[kernel_size](input_layer)
-                    )
+                    pool_layers[kernel_size](conv_layers[kernel_size](input_layer))
                 )
                 for kernel_size in self.textual_config.kernel_sizes
             ]
