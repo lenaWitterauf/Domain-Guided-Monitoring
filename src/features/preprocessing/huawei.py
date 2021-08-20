@@ -45,6 +45,8 @@ class HuaweiPreprocessorConfig:
     )
     use_trace_data: bool = False
     aggregate_per_trace: bool = False
+    aggregate_per_max_number: int = -1
+    aggregate_per_time_frequency: str = ""
     log_datetime_column_name: str = "@timestamp"
     log_payload_column_name: str = "Payload"
     drain_log_depth: int = 10
@@ -74,6 +76,31 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
     def load_data(self) -> pd.DataFrame:
         if self.config.aggregate_per_trace:
             return self._load_data_per_trace()
+        elif self.config.aggregate_per_max_number > 0:
+            log_only_data = (
+                self._load_log_only_data()
+                .sort_values(by="timestamp")
+                .reset_index(drop=True)
+                .reset_index(drop=False)
+            )
+            log_only_data["grouper"] = log_only_data["index"].apply(
+                lambda x: int(x / self.config.aggregate_per_max_number)
+            )
+            return self._aggregate_per(log_only_data, aggregation_column="grouper")
+        elif len(self.config.aggregate_per_time_frequency) > 0:
+            log_only_data = (
+                self._load_log_only_data()
+                .sort_values(by="timestamp")
+                .reset_index(drop=True)
+                .reset_index(drop=False)
+            )
+            aggregated_log_data = self._aggregate_per(
+                log_only_data,
+                aggregation_column=pd.Grouper(
+                    key="timestamp", freq=self.config.aggregate_per_time_frequency
+                ),
+            )
+            return aggregated_log_data[aggregated_log_data["num_events"] > 1]
         else:
             log_only_data = self._load_log_only_data()
             log_only_data["grouper"] = 1

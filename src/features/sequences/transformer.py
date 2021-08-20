@@ -62,7 +62,7 @@ class NextSequenceTransformer:
             max_sequence_length = min(self.config.max_window_size, max_sequence_length)
         max_features_per_time = (
             sequence_df[sequence_column_name]
-            .apply(lambda list: max([len(sublist) for sublist in list]))
+            .apply(lambda list: max([len(sublist) for sublist in list]) if len(list) > 0 else 0)
             .max()
         )
         max_features_per_sequence = max_sequence_length * max_features_per_time
