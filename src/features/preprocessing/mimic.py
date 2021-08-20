@@ -217,7 +217,8 @@ class ICD9DescriptionPreprocessor(Preprocessor):
                 description_df.loc[
                     description_df["label"] == to_replace_keys[idx], "description"
                 ]
-                + " NOISENODE" + str(idx)
+                + " NOISENODE"
+                + str(idx)
             )
             description_df = description_df.append(
                 {
@@ -239,7 +240,12 @@ class KnowlifePreprocessor(Preprocessor):
     def load_data(self) -> pd.DataFrame:
         logging.info("Starting to preprocess Knowlife causality")
         knowlife_df = self._read_knowlife_df()
-        knowlife_icd9_matching = self._read_knowlife_icd_mapping(knowlife_df)
+        knowlife_icd9_matching = (
+            self._read_knowlife_icd_mapping(knowlife_df)
+            .drop_duplicates()
+            .groupby(by="cui")
+            .agg({"icd9_code": lambda x: list(x),})
+        )
         left_knowlife_df = pd.merge(
             knowlife_df,
             knowlife_icd9_matching,
@@ -256,13 +262,23 @@ class KnowlifePreprocessor(Preprocessor):
         )
         knowlife_df["parent_id"] = left_knowlife_df["icd9_code"]
         knowlife_df["child_id"] = right_knowlife_df["icd9_code"]
-        knowlife_df["parent_name"] = left_knowlife_df["icd9_code"]
-        knowlife_df["child_name"] = right_knowlife_df["icd9_code"]
+        knowlife_df = knowlife_df.explode(
+            column="parent_id"
+        ).explode(
+            column="child_id"
+        ).dropna(
+            subset=["parent_id", "child_id"],
+        ).drop_duplicates(
+            subset=["parent_id", "child_id"],
+        ).reset_index(drop=True)
+
+        knowlife_df["parent_name"] = knowlife_df["parent_id"]
+        knowlife_df["child_name"] = knowlife_df["child_id"]
         if len(self.config.replace_keys) > 0:
             knowlife_df = self._add_noise_connections(knowlife_df)
         return knowlife_df[
             ["parent_id", "child_id", "parent_name", "child_name"]
-        ].dropna()
+        ]
 
     def _read_knowlife_icd_mapping(self, knowlife_df: pd.DataFrame) -> pd.DataFrame:
         return ICD9KnowlifeMatcher(
@@ -391,7 +407,9 @@ class MimicPreprocessor(Preprocessor):
                 diagnosis_df[replacement_columns[idx]] == to_replace_keys[idx]
             ].sample(frac=replacement_percentages[idx])
 
-            diagnosis_df.loc[replace_samples.index, replacement_columns[idx]] = replacement_keys[idx]
+            diagnosis_df.loc[
+                replace_samples.index, replacement_columns[idx]
+            ] = replacement_keys[idx]
 
         return diagnosis_df
 

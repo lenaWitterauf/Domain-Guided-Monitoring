@@ -4,47 +4,53 @@ from tqdm import tqdm
 import logging
 from .node import Node
 from .base import BaseKnowledge
+from .config import KnowledgeConfig
 
 
 class CausalityKnowledge(BaseKnowledge):
     def __init__(
         self,
+        config: KnowledgeConfig,
         child_id_col="child_id",
         parent_id_col="parent_id",
         child_name_col="child_name",
         parent_name_col="parent_name",
     ):
+        super(CausalityKnowledge, self).__init__(config=config)
         self.child_id_col = child_id_col
         self.parent_id_col = parent_id_col
         self.child_name_col = child_name_col
         self.parent_name_col = parent_name_col
 
     def get_connections_for_idx(self, idx: int) -> Set[int]:
-        return set(
-            self.nodes[idx].get_neighbour_label_idxs() + [idx]
-        )
+        return set(self.nodes[idx].get_neighbour_label_idxs() + [idx])
 
-    def get_description_vocab(
-        self, ids: Set[int]
-    ) -> Dict[int, str]:
-        return {
-            idx: node.label_name for idx, node in self.nodes.items() if idx in ids
-        }
+    def get_description_vocab(self, ids: Set[int]) -> Dict[int, str]:
+        return {idx: node.label_name for idx, node in self.nodes.items() if idx in ids}
+
+    def _add_prefixes(self, causality_df: pd.DataFrame) -> pd.DataFrame:
+        causes_causality_df = causality_df.copy()
+        causes_causality_df[self.child_id_col] = causes_causality_df[self.child_id_col].apply(lambda x: 'causes_' + x)
+        causedby_causality_df = causality_df.copy()
+        causedby_causality_df[self.parent_id_col] = causedby_causality_df[self.parent_id_col].apply(lambda x: 'causedby_' + x)
+        return pd.concat([causes_causality_df, causedby_causality_df]).reset_index(drop=True)
 
     def build_causality_from_df(
         self, causality_df: pd.DataFrame, vocab: Dict[str, int]
     ):
+        if self.config.add_causality_prefix:
+            causality_df = self._add_prefixes(causality_df)
         self.vocab: Dict[str, int] = vocab
         self._build_extended_vocab(causality_df, vocab)
         for _, row in tqdm(causality_df.iterrows(), desc="Building Causality from df"):
             child_id = row[self.child_id_col]
             if child_id not in self.extended_vocab:
-                logging.debug("Ignoring node %s as not in dataset", child_id)
+                #logging.debug("Ignoring node %s as not in dataset", child_id)
                 continue
 
             parent_id = row[self.parent_id_col]
             if parent_id not in self.extended_vocab:
-                logging.debug("Ignoring node %s as not in dataset", parent_id)
+                #logging.debug("Ignoring node %s as not in dataset", parent_id)
                 continue
 
             child_node = self.nodes[self.extended_vocab[child_id]]
@@ -76,6 +82,9 @@ class CausalityKnowledge(BaseKnowledge):
                 child_df = causality_df[causality_df[self.parent_id_col] == label]
                 children = list(set(child_df[self.child_id_col]))
                 labels_to_handle = labels_to_handle + children
+                if label == '272':
+                    print(parents)
+                    print(children)
             else:
                 self.extended_vocab[label] = max_index + 1
                 max_index = max_index + 1

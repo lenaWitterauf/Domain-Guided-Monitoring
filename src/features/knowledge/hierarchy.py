@@ -4,16 +4,19 @@ from tqdm import tqdm
 import logging
 from .node import Node
 from .base import BaseKnowledge
+from .config import KnowledgeConfig
 
 
 class HierarchyKnowledge(BaseKnowledge):
     def __init__(
         self,
+        config: KnowledgeConfig,
         child_id_col="child_id",
         parent_id_col="parent_id",
         child_name_col="child_name",
         parent_name_col="parent_name",
     ):
+        super(HierarchyKnowledge, self).__init__(config=config)
         self.child_id_col = child_id_col
         self.parent_id_col = parent_id_col
         self.child_name_col = child_name_col

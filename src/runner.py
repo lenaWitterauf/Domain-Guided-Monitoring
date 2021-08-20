@@ -1,6 +1,3 @@
-from src.training.analysis import frequency
-from src.features.knowledge.noise import NoiseKnowledge
-from src.features.knowledge.base import BaseKnowledge
 from src.features.sequences.transformer import SequenceMetadata
 from src.training import analysis, models
 from src.features import preprocessing, sequences, knowledge
@@ -218,7 +215,7 @@ class ExperimentRunner:
     def _build_model(
         self,
         metadata: sequences.SequenceMetadata,
-        knowledge: knowledge.BaseKnowledge,
+        base_knowledge: knowledge.BaseKnowledge,
         model: models.BaseModel,
     ) -> knowledge.BaseKnowledge:
         if (
@@ -226,13 +223,15 @@ class ExperimentRunner:
             or self.config.noise_to_remove > 0
             or self.config.attention_noise_to_remove > 0
         ):
-            knowledge = NoiseKnowledge(knowledge)
-            knowledge.remove_lowest_connections(
+            noise_knowledge = knowledge.NoiseKnowledge(base_knowledge)
+            noise_knowledge.remove_lowest_connections(
                 percentage=self.config.attention_noise_to_remove,
                 connections_reference_file=self.config.attention_weight_reference_file,
             )
-            knowledge.add_random_connections(percentage=self.config.noise_to_add)
-            knowledge.remove_random_connections(percentage=self.config.noise_to_remove)
+            noise_knowledge.add_random_connections(percentage=self.config.noise_to_add)
+            noise_knowledge.remove_random_connections(
+                percentage=self.config.noise_to_remove
+            )
 
             mlflow.set_tag(
                 "noise_type",
@@ -245,26 +244,30 @@ class ExperimentRunner:
             (
                 original_connections_text,
                 noise_connections_text,
-            ) = knowledge.get_text_connections()
+            ) = noise_knowledge.get_text_connections()
             mlflow.log_dict(
                 original_connections_text, "original_knowledge.json",
             )
             mlflow.log_dict(
                 noise_connections_text, "noise_knowledge.json",
             )
-        model.build(metadata, knowledge)
-        return knowledge
+            model.build(metadata, noise_knowledge)
+            return noise_knowledge
+        model.build(metadata, base_knowledge)
+        return base_knowledge
 
     def _load_model(
         self, metadata: sequences.SequenceMetadata
     ) -> Tuple[knowledge.BaseKnowledge, models.BaseModel]:
         model: models.BaseModel
         if self.config.model_type == "simple":
-            knowledge = BaseKnowledge()
-            knowledge.vocab = metadata.x_vocab
-            knowledge.extended_vocab = metadata.x_vocab
+            base_knowledge = knowledge.BaseKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
+            base_knowledge.vocab = metadata.x_vocab
+            base_knowledge.extended_vocab = metadata.x_vocab
             model = models.SimpleModel()
-            return (knowledge, model)
+            return (base_knowledge, model)
 
         elif self.config.model_type == "gram" or self.config.model_type == "hierarchy":
             hierarchy = self._load_hierarchy_knowledge(metadata)
@@ -302,7 +305,9 @@ class ExperimentRunner:
                 config=mimic_config
             )
             description_df = description_preprocessor.load_data()
-            description_knowledge = knowledge.DescriptionKnowledge()
+            description_knowledge = knowledge.DescriptionKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
             description_knowledge.build_knowledge_from_df(
                 description_df, metadata.x_vocab
             )
@@ -312,7 +317,9 @@ class ExperimentRunner:
                 preprocessing.HuaweiPreprocessorConfig()
             )
             description_df = description_preprocessor.load_data()
-            description_knowledge = knowledge.DescriptionKnowledge()
+            description_knowledge = knowledge.DescriptionKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
             description_knowledge.build_knowledge_from_df(
                 description_df, metadata.x_vocab
             )
@@ -332,13 +339,13 @@ class ExperimentRunner:
     ) -> knowledge.CausalityKnowledge:
         causality_preprocessor: preprocessing.Preprocessor
         if self.config.sequence_type == "huawei_logs":
-            causality_preprocessor = (
-                preprocessing.ConcurrentAggregatedLogsCausalityPreprocessor(
-                    config=preprocessing.HuaweiPreprocessorConfig(),
-                )
+            causality_preprocessor = preprocessing.ConcurrentAggregatedLogsCausalityPreprocessor(
+                config=preprocessing.HuaweiPreprocessorConfig(),
             )
             causality_df = causality_preprocessor.load_data()
-            causality = knowledge.CausalityKnowledge()
+            causality = knowledge.CausalityKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
             causality.build_causality_from_df(causality_df, metadata.x_vocab)
             return causality
         elif self.config.sequence_type == "mimic":
@@ -347,7 +354,9 @@ class ExperimentRunner:
                 config=mimic_config,
             )
             causality_df = causality_preprocessor.load_data()
-            causality = knowledge.CausalityKnowledge()
+            causality = knowledge.CausalityKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
             causality.build_causality_from_df(causality_df, metadata.x_vocab)
             return causality
         else:
@@ -370,7 +379,9 @@ class ExperimentRunner:
                 config=mimic_config
             )
             hierarchy_df = hierarchy_preprocessor.load_data()
-            hierarchy = knowledge.HierarchyKnowledge()
+            hierarchy = knowledge.HierarchyKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
             hierarchy.build_hierarchy_from_df(hierarchy_df, metadata.x_vocab)
             return hierarchy
         elif self.config.sequence_type == "huawei_logs":
@@ -378,13 +389,17 @@ class ExperimentRunner:
                 preprocessing.HuaweiPreprocessorConfig()
             )
             hierarchy_df = hierarchy_preprocessor.load_data()
-            hierarchy = knowledge.HierarchyKnowledge()
+            hierarchy = knowledge.HierarchyKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
             hierarchy.build_hierarchy_from_df(hierarchy_df, metadata.x_vocab)
             return hierarchy
         elif self.config.sequence_type == "c24":
             hierarchy_preprocessor = preprocessing.C24HierarchyPreprocessor()
             hierarchy_df = hierarchy_preprocessor.load_data()
-            hierarchy = knowledge.HierarchyKnowledge()
+            hierarchy = knowledge.HierarchyKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
             hierarchy.build_hierarchy_from_df(hierarchy_df, metadata.x_vocab)
             return hierarchy
         else:
