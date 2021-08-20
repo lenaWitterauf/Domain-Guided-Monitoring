@@ -14,7 +14,7 @@ class SequenceConfig:
     max_window_size: int = 10  # max number of timestamps per prediction input
     min_window_size: int = 2  # min number of timestamps per prediction input
     window_overlap: bool = True  # if true, timestamps for different prediction inputs may overlap
-    allow_subwindows: bool = True  # if true, all subsequences of a given sequence are used; if false, resembles sliding window approach
+    allow_subwindows: bool = False  # if true, all subsequences of a given sequence are used; if false, resembles sliding window approach
     valid_y_features: List[str] = dataclasses.field(
         default_factory=lambda: [],
     )  # if not empty, only these features are used as prediction goals

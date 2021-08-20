@@ -58,11 +58,18 @@ class NextSequenceTransformer:
     ) -> SequenceMetadata:
         (x_vocab, y_vocab) = self._generate_vocabs(sequence_df, sequence_column_name)
         max_sequence_length = sequence_df[sequence_column_name].apply(len).max() - 1
-        if not self.config.predict_full_y_sequence and not self.config.predict_full_y_sequence_wide:
+        if (
+            not self.config.predict_full_y_sequence
+            and not self.config.predict_full_y_sequence_wide
+        ):
             max_sequence_length = min(self.config.max_window_size, max_sequence_length)
         max_features_per_time = (
             sequence_df[sequence_column_name]
-            .apply(lambda list: max([len(sublist) for sublist in list]) if len(list) > 0 else 0)
+            .apply(
+                lambda list: max([len(sublist) for sublist in list])
+                if len(list) > 0
+                else 0
+            )
             .max()
         )
         max_features_per_sequence = max_sequence_length * max_features_per_time
@@ -78,7 +85,7 @@ class NextSequenceTransformer:
             max_features_per_sequence=max_features_per_sequence,
             x_vocab=x_vocab,
             y_vocab=y_vocab,
-            full_y_prediction = self.config.predict_full_y_sequence
+            full_y_prediction=self.config.predict_full_y_sequence,
         )
 
     def transform_train_test_split(
@@ -212,8 +219,8 @@ class NextSequenceTransformer:
             )
             min_end_index = (
                 start_index + self.config.min_window_size
-                if self.config.allow_subwindows or start_index == 0
-                else max_end_index
+                if self.config.allow_subwindows
+                else max(max_end_index - 1, start_index)
             )
             for end_index in range(min_end_index, max_end_index):
                 if self.config.flatten_y:
