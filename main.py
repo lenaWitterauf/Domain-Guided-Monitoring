@@ -2,7 +2,7 @@ from src import ExperimentRunner
 import logging
 import mlflow
 from src import ExperimentConfig
-from src.features import preprocessing, sequences
+from src.features import knowledge, preprocessing, sequences
 from src.training import models
 
 logging.basicConfig(level=logging.DEBUG)
@@ -17,6 +17,7 @@ def _log_all_configs_to_mlflow():
         sequences.SequenceConfig(),
         models.ModelConfig(),
         models.TextualPaperModelConfig(),
+        knowledge.KnowledgeConfig(),
     ]:
         for config_name, config_value in vars(config).items():
             full_config_name = config.__class__.__name__ + config_name
