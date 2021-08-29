@@ -448,15 +448,18 @@ class NextPartialSequenceTransformerFromDataframe(NextPartialSequenceTransformer
             )
             else sequence_column_name,
         )
-        y_vocab = self._generate_vocab(
-            sequence_df,
-            self.config.y_sequence_column_name
-            if (
-                self.config.y_sequence_column_name is not None
-                and len(self.config.y_sequence_column_name) > 0
+        if len(self.valid_y_features) == 0:
+            y_vocab = self._generate_vocab(
+                sequence_df,
+                self.config.y_sequence_column_name
+                if (
+                    self.config.y_sequence_column_name is not None
+                    and len(self.config.y_sequence_column_name) > 0
+                )
+                else sequence_column_name,
             )
-            else sequence_column_name,
-        )
+        else:
+            y_vocab = self._generate_vocab_from_list(self.valid_y_features)
 
         super().set_valid_x_features([x for x in x_vocab.keys()])
         super().set_valid_y_features([y for y in y_vocab.keys()])
@@ -466,13 +469,7 @@ class NextPartialSequenceTransformerFromDataframe(NextPartialSequenceTransformer
 
 def load_sequence_transformer() -> NextSequenceTransformer:
     config = SequenceConfig()
-    if len(config.valid_y_features) > 0:
-        logging.debug(
-            "Using only features %s as prediction goals",
-            ",".join(config.valid_y_features),
-        )
-        return NextPartialSequenceTransformer(config=config)
-    elif (
+    if (
         len(config.x_sequence_column_name) > 0 or len(config.y_sequence_column_name) > 0
     ):
         logging.debug(
@@ -481,5 +478,11 @@ def load_sequence_transformer() -> NextSequenceTransformer:
             config.y_sequence_column_name,
         )
         return NextPartialSequenceTransformerFromDataframe(config=config)
+    elif len(config.valid_y_features) > 0:
+        logging.debug(
+            "Using only features %s as prediction goals",
+            ",".join(config.valid_y_features),
+        )
+        return NextPartialSequenceTransformer(config=config)
     else:
         return NextSequenceTransformer(config=config)

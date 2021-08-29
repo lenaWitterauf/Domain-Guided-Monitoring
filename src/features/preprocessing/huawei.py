@@ -512,7 +512,7 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
                     {
                         "parent_id": row_value,
                         "parent_name": row_value.split("#")[1],
-                        "child_id": "log_cluster_template" + "#" + log_template,
+                        "child_id": "fine_log_cluster_template" + "#" + log_template,
                         "child_name": log_template,
                     },
                 )
