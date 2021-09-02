@@ -9,7 +9,7 @@ from .config import ExperimentConfig
 import mlflow
 import random
 from pathlib import Path
-
+import json
 
 class ExperimentRunner:
     sequence_df_pkl_file: str = "data/sequences_df.pkl"
@@ -51,6 +51,7 @@ class ExperimentRunner:
             metadata, train_dataset, test_dataset, knowledge, model
         )
         self._set_mlflow_tags(metadata)
+        logging.info("Finished run %s", self.run_id)
 
     def _log_dataset_info(
         self,
@@ -289,6 +290,11 @@ class ExperimentRunner:
             model = models.CausalityModel()
             return (causality_knowledge, model)
 
+        elif self.config.model_type == "file":
+            file_knowledge = self._load_file_knowledge(metadata)
+            model = models.FileModel()
+            return (file_knowledge, model)
+
         else:
             logging.fatal("Unknown model type %s", self.config.model_type)
             raise InputError(
@@ -333,6 +339,22 @@ class ExperimentRunner:
                 message="Description knowledge not available for data type: "
                 + str(self.config.sequence_type)
             )
+
+    def _load_file_knowledge(
+        self, metadata: sequences.SequenceMetadata
+    ) -> knowledge.FileKnowledge:
+        config=knowledge.KnowledgeConfig()
+        file_knowledge = knowledge.FileKnowledge(
+            config=config,
+        )
+        with open(config.file_knowledge) as knowledge_file:
+            knowledge_dict = json.load(knowledge_file)
+            file_knowledge.build_knowledge_from_dict(
+                knowledge_dict, 
+                metadata.x_vocab
+            )
+            
+        return file_knowledge
 
     def _load_causal_knowledge(
         self, metadata: sequences.SequenceMetadata

@@ -5,3 +5,4 @@ from .descriptions import DescriptionKnowledge
 from .base import BaseKnowledge
 from .config import KnowledgeConfig
 from .noise import NoiseKnowledge
+from .file import FileKnowledge
