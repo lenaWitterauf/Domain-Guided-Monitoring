@@ -9,15 +9,19 @@ from mlflow.tracking import MlflowClient
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("matplotlib.font_manager").disabled = True
 
+
 def _write_file_knowledge(knowledge: Dict[Any, Any]):
     knowledge_config = features.knowledge.KnowledgeConfig()
     with open(knowledge_config.file_knowledge, "w") as knowledge_file:
         json.dump(knowledge, knowledge_file)
 
 
-def _write_empty_knowledge():
-    logging.info("Writing empty file knowledge...")
-    _write_file_knowledge({})
+def _write_reference_knowledge(refinement_config: refinement.RefinementConfig):
+    logging.info("Writing reference knowledge...")
+    original_knowledge = refinement.KnowledgeProcessor(
+        refinement_config
+    ).load_original_knowledge()
+    _write_file_knowledge(original_knowledge)
 
 
 def _write_original_knowledge(refinement_config: refinement.RefinementConfig):
@@ -56,7 +60,7 @@ def _add_mlflow_tag(run_id: str, refinement_timestamp: int, suffix: str):
 def main_refinement():
     refinement_timestamp = time.time()
     refinement_config = refinement.RefinementConfig()
-    _write_empty_knowledge()
+    _write_reference_knowledge(refinement_config)
     reference_run_id = _main()
     _add_mlflow_tag(reference_run_id, refinement_timestamp, suffix="reference")
 

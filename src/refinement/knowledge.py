@@ -17,6 +17,10 @@ class KnowledgeProcessor:
         with open(self.config.original_file_knowledge) as knowledge_file:
             return json.load(knowledge_file)
 
+    def load_reference_knowledge(self) -> Dict[str, Set[str]]:
+        with open(self.config.reference_file_knowledge) as knowledge_file:
+            return json.load(knowledge_file)
+
     def _calculate_added_edges(
         self,
         attention_base: Dict[str, Dict[str, float]],
@@ -125,13 +129,17 @@ class KnowledgeProcessor:
             run_id_base=reference_run_id, run_id_comp=refinement_run_id
         )
 
+        edge_comparison_df = self._calculate_edge_comparison(
+            attention_base=attention_base,
+            attention_comp=attention_comp,
+            train_frequency=train_frequency,
+            comparison_df=comparison_df,
+        )
         edge_comparison_df = (
-            self._calculate_edge_comparison(
-                attention_base=attention_base,
-                attention_comp=attention_comp,
-                train_frequency=train_frequency,
-                comparison_df=comparison_df,
-            )
+            edge_comparison_df[
+                edge_comparison_df["refinement_metric"]
+                < self.config.max_refinement_metric
+            ]
             .sort_values(by="refinement_metric", ascending=True)
             .head(n=self.config.max_edges_to_remove)
         )
@@ -244,12 +252,8 @@ class KnowledgeProcessor:
     def _load_comparison_df(
         self, run_id_base, run_id_comp, suffix_base="_base", suffix_comp="_comp"
     ) -> pd.DataFrame:
-        prediction_df_base = self._load_prediction_df(run_id_base).drop_duplicates(
-            subset=["input_converted", "output"]
-        )
-        prediction_df_comp = self._load_prediction_df(run_id_comp).drop_duplicates(
-            subset=["input_converted", "output"]
-        )
+        prediction_df_base = self._load_prediction_df(run_id_base)
+        prediction_df_comp = self._load_prediction_df(run_id_comp)
         if prediction_df_base is None or prediction_df_comp is None:
             logging.error(
                 "Unable to load prediction_dfs for runs {} and {}".format(
@@ -259,9 +263,13 @@ class KnowledgeProcessor:
             return pd.DataFrame()
 
         comparison_df = pd.merge(
-            prediction_df_base,
-            prediction_df_comp,
-            on=["input_converted", "inputs", "output"],
+            prediction_df_base.sort_values(by=["input_converted", "inputs", "output"])
+            .reset_index(drop=True)
+            .reset_index(drop=False),
+            prediction_df_comp.sort_values(by=["input_converted", "inputs", "output"])
+            .reset_index(drop=True)
+            .reset_index(drop=False),
+            on=["index", "input_converted", "inputs", "output"],
             suffixes=(suffix_base, suffix_comp),
         )
         return comparison_df
