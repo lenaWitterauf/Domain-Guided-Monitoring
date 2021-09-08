@@ -13,11 +13,11 @@ class KnowledgeProcessor:
     def __init__(self, config: RefinementConfig):
         self.config = config
 
-    def load_original_knowledge(self) -> Dict[str, Set[str]]:
+    def load_original_knowledge(self) -> Dict[str, List[str]]:
         with open(self.config.original_file_knowledge) as knowledge_file:
             return json.load(knowledge_file)
 
-    def load_reference_knowledge(self) -> Dict[str, Set[str]]:
+    def load_reference_knowledge(self) -> Dict[str, List[str]]:
         with open(self.config.reference_file_knowledge) as knowledge_file:
             return json.load(knowledge_file)
 
