@@ -24,7 +24,7 @@ def _write_reference_knowledge(refinement_config: refinement.RefinementConfig) -
     logging.info("Writing reference knowledge...")
     original_knowledge = refinement.KnowledgeProcessor(
         refinement_config
-    ).load_original_knowledge()
+    ).load_reference_knowledge()
     _write_file_knowledge(original_knowledge)
     return calculate_num_connections(original_knowledge)
 
