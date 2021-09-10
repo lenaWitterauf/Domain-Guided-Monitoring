@@ -5,6 +5,7 @@ import json
 import time
 from typing import Dict, List
 from mlflow.tracking import MlflowClient
+import random
 
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("matplotlib.font_manager").disabled = True
@@ -22,11 +23,26 @@ def calculate_num_connections(knowledge: Dict[str, List[str]]) -> int:
 
 def _write_reference_knowledge(refinement_config: refinement.RefinementConfig) -> int:
     logging.info("Writing reference knowledge...")
-    original_knowledge = refinement.KnowledgeProcessor(
+    reference_knowledge = refinement.KnowledgeProcessor(
         refinement_config
-    ).load_reference_knowledge()
-    _write_file_knowledge(original_knowledge)
-    return calculate_num_connections(original_knowledge)
+    ).load_reference_knowledge()    
+    _write_file_knowledge(reference_knowledge)
+    return calculate_num_connections(reference_knowledge)
+
+def _add_random_connections(original_knowledge: Dict[str, List[str]], percentage: float = 0.1) -> Dict[str, List[str]]:
+    connections = set([(child, parent) for child, parents in original_knowledge.items() for parent in parents if child != parent])
+    children = list(set([x[0] for x in connections]))
+    parents = list(set([x[1] for x in connections]))
+    potential_connections = [
+        (c, p) for c in children for p in parents if (c,p) not in connections and c != p
+    ]
+    connections_to_add = random.sample(
+        potential_connections,
+        k=min(len(potential_connections), int(percentage * len(connections)))
+    )
+    return {
+        child:[parent for parent in parents if (child, parent) in connections or (child, parent) in connections_to_add] for child in children
+    }
 
 
 def _write_original_knowledge(refinement_config: refinement.RefinementConfig) -> int:
@@ -34,6 +50,9 @@ def _write_original_knowledge(refinement_config: refinement.RefinementConfig) ->
     original_knowledge = refinement.KnowledgeProcessor(
         refinement_config
     ).load_original_knowledge()
+    if refinement_config.edges_to_add > 0:
+        logging.info("Adding %f noise to original knowledge", refinement_config.edges_to_add)
+        original_knowledge = _add_random_connections(original_knowledge, refinement_config.edges_to_add)
     _write_file_knowledge(original_knowledge)
     return calculate_num_connections(original_knowledge)
 
