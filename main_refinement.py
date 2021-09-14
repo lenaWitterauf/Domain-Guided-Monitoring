@@ -40,9 +40,12 @@ def _add_random_connections(original_knowledge: Dict[str, List[str]], percentage
         potential_connections,
         k=min(len(potential_connections), int(percentage * len(connections)))
     )
-    return {
-        child:[parent for parent in parents if (child, parent) in connections or (child, parent) in connections_to_add] for child in children
-    }
+
+    logging.debug("Added %d connections from originally %d connections, %d children, %d parents", len(connections_to_add), len(connections), len(children), len(parents))
+    updated_knowledge: Dict[str, List[str]] = {}
+    for connection in set(connections_to_add).union(connections):
+        updated_knowledge[connection[0]] = updated_knowledge.get(connection[0], []) + [connection[1]]
+    return updated_knowledge
 
 
 def _write_original_knowledge(refinement_config: refinement.RefinementConfig) -> int:

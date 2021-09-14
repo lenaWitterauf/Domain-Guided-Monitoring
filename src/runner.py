@@ -10,6 +10,8 @@ import mlflow
 import random
 from pathlib import Path
 import json
+import matplotlib.pyplot as plt
+
 
 class ExperimentRunner:
     sequence_df_pkl_file: str = "data/sequences_df.pkl"
@@ -51,6 +53,7 @@ class ExperimentRunner:
             metadata, train_dataset, test_dataset, knowledge, model
         )
         self._set_mlflow_tags(metadata)
+        plt.close("all")
         logging.info("Finished run %s", self.run_id)
 
     def _log_dataset_info(
@@ -343,17 +346,12 @@ class ExperimentRunner:
     def _load_file_knowledge(
         self, metadata: sequences.SequenceMetadata
     ) -> knowledge.FileKnowledge:
-        config=knowledge.KnowledgeConfig()
-        file_knowledge = knowledge.FileKnowledge(
-            config=config,
-        )
+        config = knowledge.KnowledgeConfig()
+        file_knowledge = knowledge.FileKnowledge(config=config,)
         with open(config.file_knowledge) as knowledge_file:
             knowledge_dict = json.load(knowledge_file)
-            file_knowledge.build_knowledge_from_dict(
-                knowledge_dict, 
-                metadata.x_vocab
-            )
-            
+            file_knowledge.build_knowledge_from_dict(knowledge_dict, metadata.x_vocab)
+
         return file_knowledge
 
     def _load_causal_knowledge(
