@@ -316,3 +316,8 @@ notebooks/*.html
 notebooks/*.png
 notebooks/*.csv
 notebooks/*.json
+notebooks/exploration/**
+**.png
+**.html
+**.pkl
+**.csv
