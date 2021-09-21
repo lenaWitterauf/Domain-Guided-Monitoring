@@ -59,7 +59,7 @@ class HuaweiPreprocessorConfig:
     add_log_clusters: bool = True
     min_logs_per_trace: int = 2
     min_causality: float = 0.0
-
+    log_only_causality: bool = False
 
 class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
     sequence_column_name: str = "all_events"
@@ -610,8 +610,11 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
     def load_data(self) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
         huawei_df = preprocessor._load_log_only_data().fillna("")
+        relevant_columns = set([
+            x for x in preprocessor.relevant_columns 
+            if not self.config.log_only_causality or "log" in x])
         counted_causality = self._generate_counted_causality(
-            huawei_df, preprocessor.relevant_columns
+            huawei_df, relevant_columns
         )
 
         causality_records = []
