@@ -50,8 +50,8 @@ class HuaweiPreprocessorConfig:
     log_datetime_column_name: str = "@timestamp"
     log_payload_column_name: str = "Payload"
     fine_drain_log_depth: int = 10
-    fine_drain_log_st: float = 0.75
-    coarse_drain_log_depth: int = 5
+    fine_drain_log_st: float = 0.7
+    coarse_drain_log_depth: int = 10
     coarse_drain_log_st: float = 0.5
     url_column_name: str = "http_url"
     drain_url_depth: int = 10
@@ -334,10 +334,7 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
                 depth=depth,
                 st=st,
                 rex=[
-                    ("blk_(|-)[0-9]+", ""),
                     ("(/|)([0-9]+\.){3}[0-9]+(:[0-9]+|)(:|)", ""),
-                    (self.request_drain_regex, " "),
-                    ("[^a-zA-Z\d\s:]", ""),
                 ],
             ),
             data_df=all_logs_df,
