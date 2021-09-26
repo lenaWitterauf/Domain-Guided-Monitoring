@@ -53,12 +53,8 @@ class HuaweiPreprocessorConfig:
     fine_drain_log_st: float = 0.7
     coarse_drain_log_depth: int = 10
     coarse_drain_log_st: float = 0.4
-    drain_log_depths: List[int] = dataclasses.field(
-        default_factory=lambda: [],
-    )
-    drain_log_sts: List[float] = dataclasses.field(
-        default_factory=lambda: [],
-    )
+    drain_log_depths: List[int] = dataclasses.field(default_factory=lambda: [],)
+    drain_log_sts: List[float] = dataclasses.field(default_factory=lambda: [],)
     url_column_name: str = "http_url"
     drain_url_depth: int = 10
     drain_url_st: float = 0.5
@@ -66,6 +62,7 @@ class HuaweiPreprocessorConfig:
     min_logs_per_trace: int = 2
     min_causality: float = 0.0
     log_only_causality: bool = False
+
 
 class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
     sequence_column_name: str = "all_events"
@@ -132,8 +129,10 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
     def _load_log_only_data(self) -> pd.DataFrame:
         log_df = self._read_log_df()
         log_df = self._add_url_drain_clusters(log_df)
-        for prefix in ["fine_", "coarse_"] + [str(i) + "_" for i in range(len(self.config.drain_log_depths))]:
-            log_df[prefix + "log_cluster_template"] =  (
+        for prefix in ["fine_", "coarse_"] + [
+            str(i) + "_" for i in range(len(self.config.drain_log_depths))
+        ]:
+            log_df[prefix + "log_cluster_template"] = (
                 log_df[prefix + "log_cluster_template"]
                 .fillna("")
                 .astype(str)
@@ -169,26 +168,22 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
 
         merged_df["all_events"] = merged_df[self.relevant_columns].values.tolist()
         merged_df["attributes"] = merged_df[
-            [
-                x
-                for x in self.relevant_columns
-                if not "log_cluster_template" in x
-            ]
+            [x for x in self.relevant_columns if not "log_cluster_template" in x]
         ].values.tolist()
-        for log_template_column in [x for x in self.relevant_columns if "log_cluster_template" in x]:  
-            merged_df[log_template_column] = merged_df[
-                log_template_column
-            ].apply(lambda x: [x])
+        for log_template_column in [
+            x for x in self.relevant_columns if "log_cluster_template" in x
+        ]:
+            merged_df[log_template_column] = merged_df[log_template_column].apply(
+                lambda x: [x]
+            )
         events_per_trace = (
             merged_df.sort_values(by="timestamp")
             .groupby(aggregation_column)
             .agg(
                 {
                     column_name: lambda x: list(x)
-                    for column_name in [
-                        "all_events",
-                        "attributes",
-                    ] + [x for x in self.relevant_columns if "log_cluster_template" in x]
+                    for column_name in ["all_events", "attributes",]
+                    + [x for x in self.relevant_columns if "log_cluster_template" in x]
                 }
             )
             .reset_index()
@@ -200,12 +195,8 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             "fine_log_cluster_template"
         ].apply(lambda x: len(x))
         return events_per_trace[
-            [
-                "num_logs",
-                "num_events",
-                "all_events",
-                "attributes",
-            ] + [x for x in self.relevant_columns if "log_cluster_template" in x]
+            ["num_logs", "num_events", "all_events", "attributes",]
+            + [x for x in self.relevant_columns if "log_cluster_template" in x]
         ]
 
     def _merge_logs_traces(self, log_df: pd.DataFrame, trace_df: pd.DataFrame):
@@ -328,9 +319,7 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             DrainParameters(
                 depth=depth,
                 st=st,
-                rex=[
-                    ("(/|)([0-9]+\.){3}[0-9]+(:[0-9]+|)(:|)", ""),
-                ],
+                rex=[("(/|)([0-9]+\.){3}[0-9]+(:[0-9]+|)(:|)", ""),],
             ),
             data_df=all_logs_df,
             data_df_column_name=self.config.log_payload_column_name,
@@ -385,7 +374,7 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
                 log_df=log_result_df,
                 depth=self.config.drain_log_depths[i],
                 st=self.config.drain_log_sts[i],
-                prefix=str(i) + "_"
+                prefix=str(i) + "_",
             )
         return log_result_df
 
@@ -496,7 +485,10 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
         ):
             log_template = str(row["fine_log_cluster_template"]).lower()
             for column in relevant_columns:
-                if column == "fine_log_cluster_template" or column == "coarse_log_cluster_template":
+                if (
+                    column == "fine_log_cluster_template"
+                    or column == "coarse_log_cluster_template"
+                ):
                     continue
 
                 row_value = (
@@ -528,7 +520,7 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
             columns=["parent_id", "child_id", "parent_name", "child_name"]
         )
         for column in relevant_columns:
-            if column == "fine_log_cluster_template" or column == "coarse_log_cluster_template":
+            if "log_cluster_template" in column:
                 continue
 
             hierarchy_df = hierarchy_df.append(
@@ -612,9 +604,13 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
     def load_data(self) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
         huawei_df = preprocessor._load_log_only_data().fillna("")
-        relevant_columns = set([
-            x for x in preprocessor.relevant_columns 
-            if not self.config.log_only_causality or "log" in x])
+        relevant_columns = set(
+            [
+                x
+                for x in preprocessor.relevant_columns
+                if not self.config.log_only_causality or "log" in x
+            ]
+        )
         counted_causality = self._generate_counted_causality(
             huawei_df, relevant_columns
         )
