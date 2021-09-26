@@ -52,7 +52,13 @@ class HuaweiPreprocessorConfig:
     fine_drain_log_depth: int = 10
     fine_drain_log_st: float = 0.7
     coarse_drain_log_depth: int = 10
-    coarse_drain_log_st: float = 0.5
+    coarse_drain_log_st: float = 0.4
+    drain_log_depths: List[int] = dataclasses.field(
+        default_factory=lambda: [],
+    )
+    drain_log_sts: List[float] = dataclasses.field(
+        default_factory=lambda: [],
+    )
     url_column_name: str = "http_url"
     drain_url_depth: int = 10
     drain_url_st: float = 0.5
@@ -73,6 +79,8 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
         self.relevant_columns.add("fine_log_cluster_template")
         self.relevant_columns.add("coarse_log_cluster_template")
         self.relevant_columns.add("url_cluster_template")
+        for i in range(len(self.config.drain_log_depths)):
+            self.relevant_columns.add(str(i) + "_log_cluster_template")
         if self.config.use_trace_data:
             self.relevant_columns.update(self.config.relevant_trace_columns)
 
@@ -124,20 +132,14 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
     def _load_log_only_data(self) -> pd.DataFrame:
         log_df = self._read_log_df()
         log_df = self._add_url_drain_clusters(log_df)
-        log_df["fine_log_cluster_template"] = (
-            log_df["fine_log_cluster_template"]
-            .fillna("")
-            .astype(str)
-            .replace(np.nan, "", regex=True)
-            .apply(lambda x: x if len(x) > 0 else "___empty___")
-        )
-        log_df["coarse_log_cluster_template"] = (
-            log_df["coarse_log_cluster_template"]
-            .fillna("")
-            .astype(str)
-            .replace(np.nan, "", regex=True)
-            .apply(lambda x: x if len(x) > 0 else "___empty___")
-        )
+        for prefix in ["fine_", "coarse_"] + [str(i) + "_" for i in range(len(self.config.drain_log_depths))]:
+            log_df[prefix + "log_cluster_template"] =  (
+                log_df[prefix + "log_cluster_template"]
+                .fillna("")
+                .astype(str)
+                .replace(np.nan, "", regex=True)
+                .apply(lambda x: x if len(x) > 0 else "___empty___")
+            )
         return log_df
 
     def load_full_data(self) -> pd.DataFrame:
@@ -170,16 +172,13 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             [
                 x
                 for x in self.relevant_columns
-                if x != "fine_log_cluster_template"
-                and x != "coarse_log_cluster_template"
+                if not "log_cluster_template" in x
             ]
         ].values.tolist()
-        merged_df["fine_log_cluster_template"] = merged_df[
-            "fine_log_cluster_template"
-        ].apply(lambda x: [x])
-        merged_df["coarse_log_cluster_template"] = merged_df[
-            "coarse_log_cluster_template"
-        ].apply(lambda x: [x])
+        for log_template_column in [x for x in self.relevant_columns if "log_cluster_template" in x]:  
+            merged_df[log_template_column] = merged_df[
+                log_template_column
+            ].apply(lambda x: [x])
         events_per_trace = (
             merged_df.sort_values(by="timestamp")
             .groupby(aggregation_column)
@@ -188,10 +187,8 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
                     column_name: lambda x: list(x)
                     for column_name in [
                         "all_events",
-                        "fine_log_cluster_template",
-                        "coarse_log_cluster_template",
                         "attributes",
-                    ]
+                    ] + [x for x in self.relevant_columns if "log_cluster_template" in x]
                 }
             )
             .reset_index()
@@ -207,10 +204,8 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
                 "num_logs",
                 "num_events",
                 "all_events",
-                "fine_log_cluster_template",
-                "coarse_log_cluster_template",
                 "attributes",
-            ]
+            ] + [x for x in self.relevant_columns if "log_cluster_template" in x]
         ]
 
     def _merge_logs_traces(self, log_df: pd.DataFrame, trace_df: pd.DataFrame):
@@ -385,6 +380,13 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             st=self.config.coarse_drain_log_st,
             prefix="coarse_",
         )
+        for i in range(len(self.config.drain_log_depths)):
+            log_result_df = self._add_log_drain_clusters_prefix(
+                log_df=log_result_df,
+                depth=self.config.drain_log_depths[i],
+                st=self.config.drain_log_sts[i],
+                prefix=str(i) + "_"
+            )
         return log_result_df
 
 
