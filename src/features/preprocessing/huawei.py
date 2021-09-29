@@ -49,10 +49,11 @@ class HuaweiPreprocessorConfig:
     aggregate_per_time_frequency: str = ""
     log_datetime_column_name: str = "@timestamp"
     log_payload_column_name: str = "Payload"
+    use_log_hierarchy: bool = True
     fine_drain_log_depth: int = 10
-    fine_drain_log_st: float = 0.7
-    coarse_drain_log_depth: int = 10
-    coarse_drain_log_st: float = 0.4
+    fine_drain_log_st: float = 0.75
+    coarse_drain_log_depth: int = 4
+    coarse_drain_log_st: float = 0.2
     drain_log_depths: List[int] = dataclasses.field(default_factory=lambda: [],)
     drain_log_sts: List[float] = dataclasses.field(default_factory=lambda: [],)
     url_column_name: str = "http_url"
@@ -62,6 +63,7 @@ class HuaweiPreprocessorConfig:
     min_logs_per_trace: int = 2
     min_causality: float = 0.0
     log_only_causality: bool = False
+    relevant_log_column: str = "fine_log_cluster_template"
 
 
 class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
@@ -189,10 +191,10 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             .reset_index()
         )
         events_per_trace["num_logs"] = events_per_trace[
-            "fine_log_cluster_template"
+            self.config.relevant_log_column
         ].apply(lambda x: len([loglist for loglist in x if len(loglist[0]) > 0]))
         events_per_trace["num_events"] = events_per_trace[
-            "fine_log_cluster_template"
+            self.config.relevant_log_column
         ].apply(lambda x: len(x))
         return events_per_trace[
             ["num_logs", "num_events", "all_events", "attributes",]
@@ -319,7 +321,11 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             DrainParameters(
                 depth=depth,
                 st=st,
-                rex=[("(/|)([0-9]+\.){3}[0-9]+(:[0-9]+|)(:|)", ""),],
+                rex=[
+                    ("(/|)([0-9]+\.){3}[0-9]+(:[0-9]+|)(:|)", ""),
+                    (self.request_drain_regex, " "),
+                    ("[^a-zA-Z\d\s:]", ""),
+                ],
             ),
             data_df=all_logs_df,
             data_df_column_name=self.config.log_payload_column_name,
@@ -438,7 +444,6 @@ class ConcurrentAggregatedLogsDescriptionPreprocessor(Preprocessor):
             "trace_project": "Trace project",
             "etype": "Error type",
             "function": "Function",
-            "fine_log_cluster_template": "Log Cluster",
             "url_cluster_template": "Url Cluster",
         }
 
@@ -460,14 +465,46 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
         self.config = config
 
     def load_data(self) -> pd.DataFrame:
+        if self.config.use_log_hierarchy:
+            return self._load_log_only_hierarchy()
+        else:
+            return self._load_attribute_only_hierarchy()
+
+    def _load_log_only_hierarchy(self) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
         huawei_df = preprocessor._load_log_only_data()
+        relevant_log_columns = set(
+            [x for x in preprocessor.relevant_columns if "log_cluster_template" in x]
+            + ["coarse_log_cluster_path"]
+        )
         attribute_hierarchy = self._load_attribute_hierarchy(
-            huawei_df, preprocessor.relevant_columns
+            huawei_df, set(["coarse_log_cluster_path"])
         )
         return (
             attribute_hierarchy.append(
-                self._load_log_hierarchy(huawei_df, preprocessor.relevant_columns,),
+                self._load_log_hierarchy(huawei_df, relevant_log_columns),
+                ignore_index=True,
+            )
+            .drop_duplicates()
+            .reset_index(drop=True)
+        )
+
+    def _load_attribute_only_hierarchy(self) -> pd.DataFrame:
+        preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
+        huawei_df = preprocessor._load_log_only_data()
+        relevant_columns = set(
+            [
+                x
+                for x in preprocessor.relevant_columns
+                if "log_cluster_template" not in x
+            ]
+        )
+        attribute_hierarchy = self._load_attribute_hierarchy(
+            huawei_df, relevant_columns
+        )
+        return (
+            attribute_hierarchy.append(
+                self._load_log_hierarchy(huawei_df, relevant_columns),
                 ignore_index=True,
             )
             .drop_duplicates()
@@ -483,14 +520,8 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
             desc="Adding huawei log hierarchy",
             total=len(huawei_df),
         ):
-            log_template = str(row["fine_log_cluster_template"]).lower()
+            log_template = str(row[self.config.relevant_log_column]).lower()
             for column in relevant_columns:
-                if (
-                    column == "fine_log_cluster_template"
-                    or column == "coarse_log_cluster_template"
-                ):
-                    continue
-
                 row_value = (
                     column + "#" + str(row[column]).lower()
                     if len(str(row[column])) > 0
@@ -503,7 +534,7 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
                     {
                         "parent_id": row_value,
                         "parent_name": row_value.split("#")[1],
-                        "child_id": "fine_log_cluster_template" + "#" + log_template,
+                        "child_id": self.config.relevant_log_column + "#" + log_template,
                         "child_name": log_template,
                     },
                 )
@@ -520,9 +551,6 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
             columns=["parent_id", "child_id", "parent_name", "child_name"]
         )
         for column in relevant_columns:
-            if "log_cluster_template" in column:
-                continue
-
             hierarchy_df = hierarchy_df.append(
                 {
                     "parent_id": "root",
