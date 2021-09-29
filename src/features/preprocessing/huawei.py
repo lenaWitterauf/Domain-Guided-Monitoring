@@ -49,7 +49,7 @@ class HuaweiPreprocessorConfig:
     aggregate_per_time_frequency: str = ""
     log_datetime_column_name: str = "@timestamp"
     log_payload_column_name: str = "Payload"
-    use_log_hierarchy: bool = True
+    use_log_hierarchy: bool = False
     fine_drain_log_depth: int = 10
     fine_drain_log_st: float = 0.75
     coarse_drain_log_depth: int = 4
