@@ -64,6 +64,7 @@ class HuaweiPreprocessorConfig:
     min_causality: float = 0.0
     log_only_causality: bool = False
     relevant_log_column: str = "fine_log_cluster_template"
+    log_template_file: Path = Path("data/attention_log_templates.csv")
 
 
 class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
@@ -131,11 +132,9 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
     def _load_log_only_data(self) -> pd.DataFrame:
         log_df = self._read_log_df()
         log_df = self._add_url_drain_clusters(log_df)
-        for prefix in ["fine_", "coarse_"] + [
-            str(i) + "_" for i in range(len(self.config.drain_log_depths))
-        ]:
-            log_df[prefix + "log_cluster_template"] = (
-                log_df[prefix + "log_cluster_template"]
+        for column in [x for x in log_df.columns if "log_cluster_template" in x]:
+            log_df[column] = (
+                log_df[column]
                 .fillna("")
                 .astype(str)
                 .replace(np.nan, "", regex=True)
@@ -259,6 +258,8 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             + [self.config.url_column_name]
         ]
         rel_df = self._add_log_drain_clusters(rel_df)
+        if self.config.log_template_file.exists():
+            rel_df = self._add_precalculated_log_templates(rel_df)
         rel_df["timestamp"] = pd.to_datetime(
             rel_df[self.config.log_datetime_column_name]
         )
@@ -361,6 +362,16 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             .replace(np.nan, "", regex=True)
         )
         return log_result_df
+
+    def _add_precalculated_log_templates(self, log_df: pd.DataFrame) -> pd.DataFrame:
+        precalculated_templates_df = pd.read_csv(self.config.log_template_file)
+        if not "Payload" in precalculated_templates_df.columns:
+            logging.error("Invalid log template file - does not contain Payload column!")
+            return log_df
+        self.relevant_columns.update(
+            [x for x in precalculated_templates_df.columns if "log_cluster_template" in x]
+        )
+        return pd.merge(log_df, precalculated_templates_df, on="Payload", how="left")
 
     def _add_log_drain_clusters(self, log_df: pd.DataFrame) -> pd.DataFrame:
         log_result_df = self._add_log_drain_clusters_prefix(
