@@ -8,3 +8,4 @@ from .causal import CausalityEmbedding, CausalityModel
 from .base import BaseEmbedding, BaseModel
 from .config import ModelConfig, TextualPaperModelConfig
 from .file import FileEmbedding, FileModel
+from .combined import CombinedEmbedding, CombinedModel

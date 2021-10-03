@@ -298,11 +298,38 @@ class ExperimentRunner:
             model = models.FileModel()
             return (file_knowledge, model)
 
+        elif self.config.model_type == "combined":
+            combined_knowledge = self._load_combined_knowledge(metadata)
+            model = models.CombinedModel()
+            return (combined_knowledge, model)
+
         else:
             logging.fatal("Unknown model type %s", self.config.model_type)
             raise InputError(
                 message="Unknown model type: " + str(self.config.model_type)
             )
+
+    def _load_combined_knowledge(
+        self, metadata: sequences.SequenceMetadata
+    ) -> knowledge.CombinedKnowledge:
+        config = knowledge.KnowledgeConfig()
+        combined_knowledge = knowledge.CombinedKnowledge(config)
+        for knowledge_type in set(config.combined_knowledge_components):
+            if knowledge_type == "gram":
+                hierarchy_knowledge = self._load_hierarchy_knowledge(metadata)
+                combined_knowledge.add_knowledge(hierarchy_knowledge)
+            elif knowledge_type == "causal":
+                causal_knowledge = self._load_causal_knowledge(metadata)
+                combined_knowledge.add_knowledge(causal_knowledge)
+            elif knowledge_type == "text":
+                text_knowledge = self._load_description_knowledge(metadata)
+                combined_knowledge.add_knowledge(text_knowledge)
+            elif knowledge_type == "file":
+                file_knowledge = self._load_file_knowledge(metadata)
+                combined_knowledge.add_knowledge(file_knowledge)
+            else:
+                logging.error("Unknown knowledge type %s", knowledge_type)
+        return combined_knowledge
 
     def _load_description_knowledge(
         self, metadata: sequences.SequenceMetadata
