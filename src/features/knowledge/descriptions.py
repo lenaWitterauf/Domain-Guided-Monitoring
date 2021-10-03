@@ -8,7 +8,7 @@ from .base import BaseKnowledge
 
 class DescriptionKnowledge(BaseKnowledge):
     def get_connections_for_idx(self, idx: int) -> Set[int]:
-        return set([self.extended_vocab[x] for x in self.descriptions_set[idx]] + [idx])
+        return self.connections_per_index.get(idx, set([idx]))
 
     def get_description_vocab(self, ids: Set[int]) -> Dict[int, str]:
         description_vocab = {
@@ -31,6 +31,7 @@ class DescriptionKnowledge(BaseKnowledge):
         self.descriptions: Dict[int, List[str]] = {}
         self.descriptions_set: Dict[int, Set[str]] = {}
         self.max_description_length = 0
+        self.connections_per_index: Dict[int, Set[int]] = {}
 
         for _, row in tqdm(
             description_df.iterrows(),
@@ -69,8 +70,59 @@ class DescriptionKnowledge(BaseKnowledge):
                 self.descriptions_set[idx] = set()
             self.descriptions_set[idx].add(label)
 
+        if self.config.build_text_hierarchy:
+            self._build_hierarchical_text_knowledge()
+        else:
+            self._build_word_text_knowledge()
+
+    def _build_hierarchical_text_knowledge(self):
+        logging.info("Building hierarchical text knowledge")
+        word_overlaps: Dict[str, Set[int]] = {}
+        reverse_word_overlaps: Dict[int, Set[str]] = {
+            idx: set() for idx in self.descriptions_set
+        }
+        for feature_idx, feature_words in tqdm(
+            self.descriptions_set.items(), desc="Calculating text hierarchy"
+        ):
+            for other_feature_idx, other_feature_words in self.descriptions_set.items():
+                if feature_idx == other_feature_idx:
+                    continue
+
+                word_overlap = feature_words.intersection(other_feature_words)
+                if len(word_overlap) == 0:
+                    continue
+
+                overlap_string = " ".join([x for x in sorted(word_overlap)])
+                if overlap_string not in word_overlaps:
+                    word_overlaps[overlap_string] = set()
+
+                word_overlaps[overlap_string].update([feature_idx, other_feature_idx])
+                reverse_word_overlaps[feature_idx].add(overlap_string)
+                reverse_word_overlaps[other_feature_idx].add(overlap_string)
+
+        for word_overlap in word_overlaps:
+            self._add_to_word_vocab(word_overlap)
+
+        for feature_idx in self.vocab.values():
+            self.connections_per_index[feature_idx] = set(
+                [self.extended_vocab[x] for x in reverse_word_overlaps[feature_idx]]
+                + [feature_idx]
+            )
+
+    def _add_to_word_vocab(self, word: str):
+        if word in self.vocab:
+            return
+
+        self.words_vocab[word] = len(self.words_vocab) + len(self.vocab)
+        self.extended_vocab[word] = self.words_vocab[word]
+
+    def _build_word_text_knowledge(self):
+        logging.info("Building word text knowledge")
         for word in self.words:
-            if word in self.vocab:
-                continue
-            self.words_vocab[word] = len(self.words_vocab) + len(self.vocab)
-            self.extended_vocab[word] = self.words_vocab[word]
+            self._add_to_word_vocab(word)
+
+        for feature_idx in self.vocab.values():
+            self.connections_per_index[feature_idx] = set(
+                [self.extended_vocab[x] for x in self.descriptions_set[feature_idx]]
+                + [feature_idx]
+            )
