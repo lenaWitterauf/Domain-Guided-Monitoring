@@ -47,6 +47,7 @@ class MimicPreprocessorConfig:
     min_admissions_per_user: int = 2
     sequence_column_name: str = "icd9_code_converted_3digits"
     add_icd9_info_to_sequences: bool = True
+    cluster_file: Path = Path("data/icd9_clusters.csv")
     knowlife_file: Path = Path("data/knowlife_dump.tsv")
     umls_file: Path = Path("data/umls.csv")
     umls_api_key: str = ""
@@ -374,10 +375,23 @@ class MimicPreprocessor(Preprocessor):
 
         if self.config.add_icd9_info_to_sequences:
             diagnosis_df = self._add_icd9_information(diagnosis_df)
+        if self.config.cluster_file.exists():
+            diagnosis_df = self._add_cluster_information(diagnosis_df)
         if len(self.config.replace_keys) > 0:
             diagnosis_df = self._add_noise(diagnosis_df)
 
         return diagnosis_df
+
+    def _add_cluster_information(self, diagnosis_df: pd.DataFrame) -> pd.DataFrame:
+        cluster_df = pd.read_csv(self.config.cluster_file)
+        self.aggregation_column_names.update(cluster_df.columns)
+        return pd.merge(
+            diagnosis_df,
+            cluster_df,
+            how="inner",
+            left_on="icd9_code_converted",
+            right_on="original_level_cluster",
+        )
 
     def _add_noise(self, diagnosis_df: pd.DataFrame) -> pd.DataFrame:
         to_replace_keys = [str(x) for x in self.config.replace_keys]
