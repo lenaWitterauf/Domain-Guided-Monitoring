@@ -57,7 +57,7 @@ class MimicPreprocessorConfig:
         default_factory=lambda: [],
     )
     replace_columns: List[str] = dataclasses.field(default_factory=lambda: [],)
-
+    prediction_column: str = ""
 
 class ICD9HierarchyPreprocessor(Preprocessor):
     def __init__(self, config: MimicPreprocessorConfig):
@@ -77,7 +77,18 @@ class ICD9HierarchyPreprocessor(Preprocessor):
     def _transform_hierarchy_df(self, hierarchy_df: pd.DataFrame):
         hierarchy_df["parent_id"] = hierarchy_df["parent_code"]
         hierarchy_df["child_id"] = hierarchy_df["child_code"]
-        return hierarchy_df[["parent_id", "child_id", "parent_name", "child_name"]]
+
+        if len(self.config.prediction_column) > 0:
+            hierarchy_df["child_id"] = hierarchy_df["child_id"].apply(
+                lambda x: self.config.prediction_column + "#" + str(x)
+            )
+            hierarchy_df["parent_id"] = hierarchy_df["parent_id"].apply(
+                lambda x: self.config.prediction_column + "#" + str(x)
+            )
+
+        return hierarchy_df[
+            ["parent_id", "child_id", "parent_name", "child_name"]
+        ]
 
     def _add_noise_connections(self, hierarchy_df: pd.DataFrame):
         to_replace_keys = [str(x) for x in self.config.replace_keys]
@@ -187,6 +198,9 @@ class ICD9DescriptionPreprocessor(Preprocessor):
         logging.info("Starting to preprocess ICD9 descriptions")
         description_df = self._read_description_df()
         description_df["label"] = description_df["child_code"]
+        if len(self.config.prediction_column) > 0:
+            description_df["label"] = description_df["label"].apply(lambda x: self.config.prediction_column + "#" + x)
+
         description_df["description"] = description_df["child_name"].apply(
             lambda x: x.replace('"', "")
         )
@@ -263,23 +277,27 @@ class KnowlifePreprocessor(Preprocessor):
         )
         knowlife_df["parent_id"] = left_knowlife_df["icd9_code"]
         knowlife_df["child_id"] = right_knowlife_df["icd9_code"]
-        knowlife_df = knowlife_df.explode(
-            column="parent_id"
-        ).explode(
-            column="child_id"
-        ).dropna(
-            subset=["parent_id", "child_id"],
-        ).drop_duplicates(
-            subset=["parent_id", "child_id"],
-        ).reset_index(drop=True)
+        knowlife_df = (
+            knowlife_df.explode(column="parent_id")
+            .explode(column="child_id")
+            .dropna(subset=["parent_id", "child_id"],)
+            .drop_duplicates(subset=["parent_id", "child_id"],)
+            .reset_index(drop=True)
+        )
 
         knowlife_df["parent_name"] = knowlife_df["parent_id"]
         knowlife_df["child_name"] = knowlife_df["child_id"]
+        if len(self.config.prediction_column) > 0:
+            knowlife_df["child_id"] = knowlife_df["child_id"].apply(
+                lambda x: self.config.prediction_column + "#" + str(x)
+            )
+            knowlife_df["parent_id"] = knowlife_df["parent_id"].apply(
+                lambda x: self.config.prediction_column + "#" + str(x)
+            )
+
         if len(self.config.replace_keys) > 0:
             knowlife_df = self._add_noise_connections(knowlife_df)
-        return knowlife_df[
-            ["parent_id", "child_id", "parent_name", "child_name"]
-        ]
+        return knowlife_df[["parent_id", "child_id", "parent_name", "child_name"]]
 
     def _read_knowlife_icd_mapping(self, knowlife_df: pd.DataFrame) -> pd.DataFrame:
         return ICD9KnowlifeMatcher(
@@ -379,7 +397,12 @@ class MimicPreprocessor(Preprocessor):
             diagnosis_df = self._add_cluster_information(diagnosis_df)
         if len(self.config.replace_keys) > 0:
             diagnosis_df = self._add_noise(diagnosis_df)
+        if len(self.config.prediction_column) > 0:
+            for column in self.aggregation_column_names:
+                diagnosis_df[column] = diagnosis_df[column].apply(lambda x: str(column) + "#" + str(x))
 
+        diagnosis_df["level_all"] = diagnosis_df[self.aggregation_column_names].apply(lambda x: list(x), axis=1)
+        self.aggregation_column_names.add("level_all")
         return diagnosis_df
 
     def _add_cluster_information(self, diagnosis_df: pd.DataFrame) -> pd.DataFrame:

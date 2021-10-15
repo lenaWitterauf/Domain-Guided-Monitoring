@@ -40,9 +40,6 @@ class ICD9DataPreprocessor(Preprocessor):
             icd9_hierarchy_df.to_csv(self.icd9_hierarchy_file, index=False)
 
         icd9_hierarchy_df = pd.read_csv(self.icd9_hierarchy_file, dtype=str)
-        icd9_hierarchy_df["level_all"] = icd9_hierarchy_df.apply(
-            lambda x: list(x), axis=1
-        )
         return icd9_hierarchy_df
 
     def _find_icd9_parents_for_child(
