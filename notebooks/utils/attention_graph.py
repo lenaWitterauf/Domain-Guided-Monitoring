@@ -1,7 +1,7 @@
 from pyvis.network import Network
 from typing import Dict, List, Tuple, Set, Optional
 
-from loading import load_attention_weights
+from base import load_attention_weights
 
 
 def calculate_attention_importances(
@@ -148,6 +148,7 @@ def _create_graph_visualization(
     run_name: str,
     node_mapping: Dict[str, str],
     colored_connections: Set[Tuple[str, str]],
+    colored_connections_color: str = "red",
 ):
     feature_nodes = set(
         [
@@ -200,7 +201,7 @@ def _create_graph_visualization(
                         title=weight,
                         value=weight,
                         arrowStrikethrough=False,
-                        color="red",
+                        color=colored_connections_color,
                     )
                 else:
                     net.add_edge(
@@ -244,6 +245,7 @@ def create_graph_visualization_reference(
     threshold: float,
     run_name: str,
     use_node_mapping: bool = True,
+    colored_connections_color: str="red",
 ):
     attention_weights = load_attention_weights(run_id, local_mlflow_dir)
     if attention_weights is None:
@@ -265,5 +267,6 @@ def create_graph_visualization_reference(
         run_name=run_name,
         node_mapping=feature_node_mapping,
         colored_connections=colored_connections,
+        colored_connections_color=colored_connections_color,
     )
 

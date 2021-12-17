@@ -1,15 +1,16 @@
 import numpy as np
-from numpy.core.fromnumeric import mean
 import pandas as pd
+from pandas.core import base
 from tqdm import tqdm
 import seaborn as sns
 import matplotlib.pyplot as plt
-from typing import Dict, Set, List, Any
+from typing import Dict, Set, List, Any, Tuple
 
 from loading import (
     load_input_frequency_dict,
     load_prediction_df,
 )
+from comparison import load_comparison_df
 
 
 def _nullsafe_accuracy_for(top: pd.DataFrame, bottom: pd.DataFrame) -> float:
@@ -25,6 +26,67 @@ def _nullsafe_weighted_accuracy_for(top: pd.DataFrame, bottom: pd.DataFrame) -> 
 
     return sum(top["percentile_weight"]) / sum(bottom["percentile_weight"])
 
+def calculate_accuracy_at_k_comparisons(
+    relevant_base_run_ids: Set[str],
+    relevant_comparison_run_ids: Set[str],
+    local_mlflow_dir: str,
+    k: int,
+    num_percentiles: int = 10,
+    percentile_names: List[str] = ["output_frequency_percentile"],
+) -> pd.DataFrame:
+    data_records = []
+    for comparison_run_id in tqdm(relevant_comparison_run_ids, desc="Calculating accuracy@k per percentile"):
+        for base_run_id in relevant_base_run_ids:
+            comparison_df = load_comparison_df(
+                run_id_1=comparison_run_id,
+                suffix_1="_comp",
+                run_id_2=base_run_id, 
+                suffix_2="_base",
+                local_mlflow_dir=local_mlflow_dir,
+                num_percentiles=num_percentiles,
+            )
+            if comparison_df is None:
+                print("Unable to load comparison_df for run_ids {}, {}".format(comparison_run_id, base_run_id))
+                continue
+
+            for name in percentile_names:
+                data_records.append(
+                    {
+                        "run_id_comp": comparison_run_id,
+                        "run_id_base": base_run_id,
+                        "type": name,
+                        "percentile": -1,
+                        "accuracy_comp": _nullsafe_accuracy_for(
+                            comparison_df[comparison_df["output_rank_noties_comp"] < k], comparison_df
+                        ),
+                        "accuracy_base": _nullsafe_accuracy_for(
+                            comparison_df[comparison_df["output_rank_noties_base"] < k], comparison_df
+                        ),
+                    }
+                )
+                for percentile in range(num_percentiles):
+                    comparison_df_percentile = comparison_df[
+                        comparison_df[name] == percentile
+                    ]
+                    if len(comparison_df_percentile) == 0:
+                        continue
+                    data_records.append(
+                        {
+                            "run_id_comp": comparison_run_id,
+                            "run_id_base": base_run_id,
+                            "type": name,
+                            "percentile": percentile,
+                            "accuracy_comp": _nullsafe_accuracy_for(
+                                comparison_df_percentile[comparison_df_percentile["output_rank_noties_comp"] < k], comparison_df_percentile
+                            ),
+                            "accuracy_base": _nullsafe_accuracy_for(
+                                comparison_df_percentile[comparison_df_percentile["output_rank_noties_base"] < k], comparison_df_percentile
+                            ),
+                        }
+                    )
+
+    return pd.DataFrame.from_records(data_records)
+
 
 def calculate_accuracy_at_k(
     relevant_run_ids: Set[str],
@@ -33,6 +95,7 @@ def calculate_accuracy_at_k(
     num_percentiles: int = 10,
     percentile_names: List[str] = ["output_frequency_percentile"],
     num_input_percentiles: int = 10,
+    cluster_threshold: float = 0.9,
 ) -> pd.DataFrame:
     data_records = []
     for run_id in tqdm(relevant_run_ids, desc="Calculating accuracy@k per percentile"):
@@ -41,6 +104,7 @@ def calculate_accuracy_at_k(
             local_mlflow_dir=local_mlflow_dir,
             num_percentiles=num_percentiles,
             convert_df=True,
+            cluster_threshold=cluster_threshold,
         )
         if prediction_df is None:
             print("Unable to load prediction_df for run_id {}".format(run_id))
@@ -90,6 +154,53 @@ def calculate_accuracy_at_k(
 
     return pd.DataFrame.from_records(data_records)
 
+def calculate_percentile_value_avg(
+    relevant_run_ids: Set[str],
+    local_mlflow_dir: str,
+    num_percentiles: int = 10,
+    percentile_names: List[Tuple[str, str]] = [
+        ("avg_input_frequencies_percentile", "avg_input_frequencies")
+    ],
+    cluster_threshold: float = 0.9,
+) -> pd.DataFrame:
+    data_records = []
+    for run_id in tqdm(relevant_run_ids, desc="Calculating avg value per percentile"):
+        prediction_df = load_prediction_df(
+            run_id=run_id,
+            local_mlflow_dir=local_mlflow_dir,
+            num_percentiles=num_percentiles,
+            convert_df=True,
+            cluster_threshold=cluster_threshold,
+        )
+        if prediction_df is None:
+            print("Unable to load prediction_df for run_id {}".format(run_id))
+            continue
+
+        for p_name, name in percentile_names:
+            data_records.append(
+                {
+                    "run_id": run_id,
+                    "type": name,
+                    "percentile": -1,
+                    "value": np.mean(prediction_df[name]),
+                }
+            )
+            for percentile in range(num_percentiles):
+                prediction_df_percentile = prediction_df[
+                    prediction_df[p_name] == percentile
+                ]
+                if len(prediction_df_percentile) == 0:
+                    continue
+                data_records.append(
+                    {
+                        "run_id": run_id,
+                        "type": name,
+                        "percentile": percentile,
+                        "value": np.mean(prediction_df_percentile[name]),
+                    }
+                )
+
+    return pd.DataFrame.from_records(data_records)
 
 def load_input_percentiles(
     frequencies: Dict[str, Dict[str, float]], num_percentiles: int
@@ -372,6 +483,7 @@ def calculate_accuracies_per_percentiles(
     num_percentiles: int,
     num_input_percentiles: int,
     local_mlflow_dir: str,
+    cluster_threshold: float = 0.9,
 ):
     accuracy_df = calculate_accuracy_at_k(
         relevant_run_ids=set(relevant_run_df["info_run_id"]),
@@ -380,13 +492,35 @@ def calculate_accuracies_per_percentiles(
         num_percentiles=num_percentiles,
         num_input_percentiles=num_input_percentiles,
         local_mlflow_dir=local_mlflow_dir,
+        cluster_threshold=cluster_threshold,
+    )
+
+    return accuracy_df
+
+def calculate_values_per_percentiles(
+    relevant_run_df: pd.DataFrame,
+    percentile_names: List[Tuple[str, str]],
+    num_percentiles: int,
+    local_mlflow_dir: str,
+    cluster_threshold: float = 0.9,
+):
+    accuracy_df = calculate_percentile_value_avg(
+        relevant_run_ids=set(relevant_run_df["info_run_id"]),
+        percentile_names=percentile_names,
+        num_percentiles=num_percentiles,
+        local_mlflow_dir=local_mlflow_dir,
+        cluster_threshold=cluster_threshold,
     )
 
     return accuracy_df
 
 
-def calculate_accuracy_at_k_per_input(run_id: str, k: int, local_mlflow_dir: str) -> List[Dict[str, Any]]:
-    prediction_df = load_prediction_df(run_id=run_id, local_mlflow_dir=local_mlflow_dir)
+def calculate_accuracy_at_k_per_input(run_id: str, 
+        k: int, 
+        local_mlflow_dir: str,
+        cluster_threshold: float = 0.9,
+    ) -> List[Dict[str, Any]]:
+    prediction_df = load_prediction_df(run_id=run_id, local_mlflow_dir=local_mlflow_dir, cluster_threshold=cluster_threshold)
     frequencies = load_input_frequency_dict(
         run_id=run_id, local_mlflow_dir=local_mlflow_dir
     )

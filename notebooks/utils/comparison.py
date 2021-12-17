@@ -12,7 +12,7 @@ from loading import (
 
 
 def load_comparison_df_from_pkl(
-    run_id_1: str, run_id_2: str, pickle_dir: str
+    run_id_1: str, run_id_2: str, pickle_dir: str, 
 ) -> Optional[pd.DataFrame]:
     if pickle_dir is None or len(pickle_dir) == 0:
         return None
@@ -34,12 +34,13 @@ def load_comparison_df_from_predictions(
     suffix_2: str,
     local_mlflow_dir: str,
     num_percentiles: int,
+    feature_replacements: Dict[str, str] = {},
 ) -> Optional[pd.DataFrame]:
     prediction_df_1 = load_prediction_df(
-        run_id_1, num_percentiles=num_percentiles, local_mlflow_dir=local_mlflow_dir
+        run_id_1, num_percentiles=num_percentiles, local_mlflow_dir=local_mlflow_dir, feature_replacements=feature_replacements,
     )
     prediction_df_2 = load_prediction_df(
-        run_id_2, num_percentiles=num_percentiles, local_mlflow_dir=local_mlflow_dir
+        run_id_2, num_percentiles=num_percentiles, local_mlflow_dir=local_mlflow_dir, feature_replacements=feature_replacements,
     )
     if prediction_df_1 is None or prediction_df_2 is None:
         print("Invalid run ids!")
@@ -63,6 +64,14 @@ def load_comparison_df_from_predictions(
             on=["input_converted", "output"],
             suffixes=(suffix_1, suffix_2),
         )
+
+    print(len(prediction_df_1), len(prediction_df_2), len(comparison_df))
+    if len(comparison_df) == 0:
+        print("Comparison df for {} {} is empty!!!".format(run_id_1, run_id_2))
+        return comparison_df
+    print(len(comparison_df[comparison_df["output_rank_noties" + suffix_1] < 20]) / len(comparison_df))
+    print(len(comparison_df[comparison_df["output_rank_noties" + suffix_2] < 20]) / len(comparison_df))
+
     for column_name in [
         "output_frequency_percentile",
         "avg_input_frequencies_percentile",
@@ -94,6 +103,7 @@ def load_comparison_df(
     local_mlflow_dir: str,
     num_percentiles: int = 10,
     pickle_dir: Optional[str] = None,
+    feature_replacements: Dict[str, str] = {},
 ) -> Optional[pd.DataFrame]:
     comparison_df: Optional[pd.DataFrame] = None
     if pickle_dir is not None:
@@ -107,6 +117,7 @@ def load_comparison_df(
             suffix_2=suffix_2,
             local_mlflow_dir=local_mlflow_dir,
             num_percentiles=num_percentiles,
+            feature_replacements=feature_replacements
         )
 
     if comparison_df is None:
@@ -147,6 +158,7 @@ class Comparison:
         local_mlflow_dir: str,
         num_percentiles: int,
         comparison_pkl_dir: Optional[str] = None,
+        feature_replacements: Dict[str, str] = {},
     ):
         self.run_id_1 = run_id_1
         self.suffix_1 = run_id_1 if suffix_1 is None else suffix_1
@@ -161,6 +173,7 @@ class Comparison:
             local_mlflow_dir=local_mlflow_dir,
             num_percentiles=num_percentiles,
             pickle_dir=comparison_pkl_dir,
+            feature_replacements=feature_replacements,
         )
         self.input_frequencies: Dict[str, Optional[Dict[str, Dict[str, float]]]] = {
             self.suffix_1: load_input_frequency_dict(
@@ -206,7 +219,32 @@ class Comparison:
         return max(self.comparison_df.index)
 
 
-def plot_rank_comparison(comparison: Comparison, color="unknown_inputs"):
+
+def plot_comparison(comparison: Comparison, plot_column="avg_input_frequencies_percentile", color="outlier_distance", hover_data=[]):
+    if comparison.comparison_df is None or len(comparison.comparison_df) == 0:
+        print("Comparison has invalid comparison_df!")
+        return None
+
+    fig = px.scatter(
+        comparison.comparison_df,
+        x=plot_column + comparison.suffix_1,
+        y=plot_column + comparison.suffix_2,
+        color=color,
+        hover_data=[
+            "output",
+            "outlier_distance",
+            "index",
+            "input_length",
+            "unknown_inputs",
+            "min_input_frequencies",
+            "p10_input_frequencies",
+        ] + hover_data,
+        width=750,
+        height=500,
+    )
+    fig.show()
+
+def plot_rank_comparison(comparison: Comparison, color="unknown_inputs", hover_data=[]):
     if comparison.comparison_df is None or len(comparison.comparison_df) == 0:
         print("Comparison has invalid comparison_df!")
         return None
@@ -224,7 +262,7 @@ def plot_rank_comparison(comparison: Comparison, color="unknown_inputs"):
             "unknown_inputs",
             "min_input_frequencies",
             "p10_input_frequencies",
-        ],
+        ] + hover_data,
         width=750,
         height=500,
     )
@@ -309,13 +347,15 @@ def analyse_sequence_at_index(
             "output_frequency_percentile",
             "output_rank_noties" + comparison.suffix_1,
             "output_rank_noties" + comparison.suffix_2,
+            "original_inputs" + comparison.suffix_1,
+            "original_inputs" + comparison.suffix_2,
         ]
     ].to_dict()
     print(sequence_data)
 
     unknown_inputs = [
         x.strip()
-        for x in sequence_data["inputs"].split(",")
+        for x in sequence_data["original_inputs" + comparison.suffix_2].split(",")
         if comparison.input_frequencies_for(comparison.suffix_2)
         .get(x.strip(), {})
         .get("absolute_frequency", 0.0)
