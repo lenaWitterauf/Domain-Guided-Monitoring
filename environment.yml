@@ -8,6 +8,12 @@ dependencies:
   - seaborn
   - tqdm
   - lxml
+  # Plotting
+  - conda-forge::nbformat
+  - plotly::plotly
+  - seaborn
+  - jupyter
+  - notebook
   - pip
   - pip:
     - dc-cli
